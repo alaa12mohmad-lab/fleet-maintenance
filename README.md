@@ -47,8 +47,8 @@ Password: [كلمة مرور قوية]
 ```json
 {
   "uid": "UID_من_Firebase_Auth",
-  "email": "alaa12mohmad@gmail.com",
-  "displayName": "علاء - المدير",
+  "email": "your email",
+  "displayName": "your nam",
   "role": "admin",
   "isActive": true,
   "permissions": {
