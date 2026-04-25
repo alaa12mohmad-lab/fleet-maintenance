@@ -1,0 +1,101 @@
+// firestore.rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper Functions ─────────────────────────────────────
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return request.auth.token.email == 'alaa12mohmad@gmail.com';
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isActiveUser() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().isActive == true;
+    }
+
+    function hasPermission(perm) {
+      return isAdmin() || (isActiveUser() && getUserData().permissions[perm] == true);
+    }
+
+    // ─── Users Collection ──────────────────────────────────────
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAdmin() || request.auth.uid == userId;
+      allow delete: if isAdmin();
+    }
+
+    // ─── Invitations ───────────────────────────────────────────
+    match /invitations/{invId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ─── Equipment ────────────────────────────────────────────
+    match /equipments/{docId} {
+      allow read: if isActiveUser() || isAdmin();
+      allow create: if hasPermission('addEquipment');
+      allow update: if hasPermission('editEquipment');
+      allow delete: if hasPermission('deleteEquipment');
+    }
+
+    // ─── Vehicles ─────────────────────────────────────────────
+    match /vehicles/{docId} {
+      allow read: if isActiveUser() || isAdmin();
+      allow create: if hasPermission('addEquipment');
+      allow update: if hasPermission('editEquipment');
+      allow delete: if hasPermission('deleteEquipment');
+    }
+
+    // ─── Meter Readings ────────────────────────────────────────
+    match /meter_readings/{docId} {
+      allow read: if isActiveUser() || isAdmin();
+      allow create: if hasPermission('enterMeterReading');
+      allow update: if hasPermission('editReadings');
+      allow delete: if isAdmin();
+    }
+
+    // ─── Oil Changes ───────────────────────────────────────────
+    match /oil_changes/{docId} {
+      allow read: if isActiveUser() || isAdmin();
+      allow create: if hasPermission('enterMeterReading');
+      allow update, delete: if isAdmin();
+    }
+
+    // ─── Maintenance Logs ──────────────────────────────────────
+    match /maintenance_logs/{docId} {
+      allow read: if isActiveUser() || isAdmin();
+      allow create: if isActiveUser() || isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ─── Documents ────────────────────────────────────────────
+    match /documents/{docId} {
+      allow read: if isActiveUser() || isAdmin();
+      allow create: if hasPermission('addDocuments');
+      allow update: if hasPermission('manageDocuments');
+      allow delete: if hasPermission('manageDocuments') || isAdmin();
+    }
+
+    // ─── Alerts ───────────────────────────────────────────────
+    match /alerts/{docId} {
+      allow read: if isActiveUser() || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ─── Default: Deny All ────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

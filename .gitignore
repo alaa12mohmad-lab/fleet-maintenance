@@ -1,0 +1,40 @@
+# Firebase Admin SDK key - NEVER commit
+scripts/serviceAccountKey.json
+
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Build output
+/dist
+/build
+
+# Environment variables - NEVER commit these
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
