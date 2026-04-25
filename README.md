@@ -35,7 +35,7 @@
 
 في Firebase Console → Authentication → Add User:
 ```
-Email: alaa12mohmad@gmail.com
+Email: >>>>>>>>>
 Password: [كلمة مرور قوية]
 ```
 
