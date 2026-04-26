@@ -18,6 +18,25 @@ const EMPLOYEE_DOC_TYPES  = ['إقامة', 'تأمين طبي', 'رخصة قيا
 function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
   const [form, setForm] = useState({})
   const [loading, setLoading] = useState(false)
+  const [newFile, setNewFile] = useState(null)
+  const [uploading, setUploading] = useState(false)
+
+  const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+  const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
+
+  const uploadToCloudinary = async (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('upload_preset', UPLOAD_PRESET)
+    formData.append('folder', 'fleet_documents')
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
+      { method: 'POST', body: formData }
+    )
+    if (!res.ok) throw new Error('فشل رفع الملف')
+    const data = await res.json()
+    return { fileUrl: data.secure_url, fileName: file.name }
+  }
 
   useEffect(() => {
     if (doc) setForm({ ...doc })
