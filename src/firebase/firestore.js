@@ -98,36 +98,46 @@ export const generateAlerts = async (allEquipment, allVehicles, allDocuments) =>
   const alerts = []
   const today = new Date()
 
-  // تنبيهات زيت المعدات والسيارات
   const allItems = [
     ...allEquipment.map(e => ({ ...e, _type: 'equipment' })),
     ...allVehicles.map(v => ({ ...v, _type: 'vehicle' })),
   ]
 
   for (const item of allItems) {
-    if (!item.lastOilChangeReading || !item.oilChangeInterval || !item.currentReading) continue
-    const remaining = (item.lastOilChangeReading + item.oilChangeInterval) - item.currentReading
+    const current = Number(item.currentReading || 0)
+    const lastOil = Number(item.lastOilChangeReading || 0)
+    const interval = Number(item.oilChangeInterval || 0)
     const unit = item.meterType === 'hours' ? 'ساعة' : 'كم'
+
+    if (!interval) continue
+
+    const nextChange = lastOil + interval
+    const remaining = nextChange - current
+    const warningThreshold = interval * 0.15 // تنبيه عند 15% متبقي
 
     if (remaining <= 0) {
       alerts.push({
         type: 'danger',
         category: 'oil_change',
         title: 'تجاوز موعد تغيير الزيت',
-        message: `${item.name} - تجاوز الموعد بـ ${Math.abs(remaining)} ${unit}`,
+        message: `${item.name} — تجاوز الموعد بـ ${Math.abs(remaining).toLocaleString()} ${unit} (العداد: ${current.toLocaleString()})`,
         itemId: item.id,
         itemType: item._type,
         itemName: item.name,
+        remaining,
+        unit,
       })
-    } else if (remaining <= 500) {
+    } else if (remaining <= warningThreshold) {
       alerts.push({
         type: 'warning',
         category: 'oil_change',
         title: 'اقتراب موعد تغيير الزيت',
-        message: `${item.name} - متبقي ${remaining} ${unit}`,
+        message: `${item.name} — متبقي ${remaining.toLocaleString()} ${unit} فقط (العداد الحالي: ${current.toLocaleString()})`,
         itemId: item.id,
         itemType: item._type,
         itemName: item.name,
+        remaining,
+        unit,
       })
     }
   }
@@ -143,7 +153,7 @@ export const generateAlerts = async (allEquipment, allVehicles, allDocuments) =>
         type: 'danger',
         category: 'document',
         title: 'وثيقة منتهية الصلاحية',
-        message: `${doc.name} - انتهت منذ ${Math.abs(diffDays)} يوم`,
+        message: `${doc.name} — انتهت منذ ${Math.abs(diffDays)} يوم`,
         itemId: doc.id,
         itemName: doc.name,
       })
@@ -152,14 +162,17 @@ export const generateAlerts = async (allEquipment, allVehicles, allDocuments) =>
         type: 'warning',
         category: 'document',
         title: 'وثيقة تنتهي قريباً',
-        message: `${doc.name} - تنتهي خلال ${diffDays} يوم`,
+        message: `${doc.name} — تنتهي خلال ${diffDays} يوم`,
         itemId: doc.id,
         itemName: doc.name,
       })
     }
   }
 
-  return alerts
+  return alerts.sort((a, b) => {
+    const order = { danger: 0, warning: 1 }
+    return (order[a.type] || 1) - (order[b.type] || 1)
+  })
 }
 
 // ─── Users ────────────────────────────────────────────────────
