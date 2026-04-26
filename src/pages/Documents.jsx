@@ -4,7 +4,7 @@ import { useOutletContext } from 'react-router-dom'
 import { subscribeToCollection, deleteItem, updateItem } from '../firebase/firestore'
 import DocumentForm from '../components/Documents/DocumentForm'
 import { DocStatusBadge, SearchInput, EmptyState, ConfirmDialog, LoadingSpinner, Pagination, Modal } from '../components/Common'
-import { FileText, Plus, Trash2, Eye, Edit2, Upload, X } from 'lucide-react'
+import { FileText, Plus, Trash2, Edit2, Upload, X, ArrowUp, ArrowDown } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { calculateDocumentStatus } from '../utils/calculations'
 import toast from 'react-hot-toast'
@@ -39,11 +39,11 @@ function getFileIcon(fileName) {
 
 // ─── Edit Modal ───────────────────────────────────────────────
 function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
-  const [form, setForm]         = useState({})
-  const [loading, setLoading]   = useState(false)
+  const [form, setForm]           = useState({})
+  const [loading, setLoading]     = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [newFiles, setNewFiles] = useState([])
-  const [progress, setProgress] = useState('')
+  const [newFiles, setNewFiles]   = useState([])
+  const [progress, setProgress]   = useState('')
 
   useEffect(() => {
     if (doc) { setForm({ ...doc }); setNewFiles([]) }
@@ -95,7 +95,6 @@ function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
     setLoading(true)
     try {
       let updatedForm = { ...form }
-
       if (newFiles.length > 0) {
         setUploading(true)
         const uploaded = []
@@ -112,7 +111,6 @@ function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
         updatedForm.fileName    = updatedForm.attachments[0]?.fileName || ''
         setUploading(false)
       }
-
       await updateItem('documents', doc.id, updatedForm)
       toast.success('تم التحديث بنجاح')
       setNewFiles([])
@@ -269,34 +267,59 @@ export default function Documents() {
   const [filterCategory, setFilterCategory] = useState('all')
   const [deleteTarget, setDeleteTarget]     = useState(null)
   const [currentPage, setCurrentPage]       = useState(1)
+  const [sortBy, setSortBy]                 = useState('createdAt')
+  const [sortDir, setSortDir]               = useState('desc')
 
   useEffect(() => {
     const unsub = subscribeToCollection('documents', data => {
-      setDocs(data.sort((a, b) => {
-        const order = { expired:0, critical:1, warning:2, ok:3, unknown:4 }
-        return (order[calculateDocumentStatus(a.expiryDate).status] || 4) -
-               (order[calculateDocumentStatus(b.expiryDate).status] || 4)
-      }))
+      setDocs(data)
       setLoading(false)
     })
     return unsub
   }, [])
 
-  const filtered = docs.filter(d => {
-    const q = search.toLowerCase()
-    const matchSearch = !search ||
-      d.name?.toLowerCase().includes(q) ||
-      d.docType?.toLowerCase().includes(q) ||
-      d.linkedName?.toLowerCase().includes(q)
-    const status = calculateDocumentStatus(d.expiryDate).status
-    const matchStatus =
-      filterStatus === 'all' ||
-      (filterStatus === 'expired' && status === 'expired') ||
-      (filterStatus === 'warning' && ['warning','critical'].includes(status)) ||
-      (filterStatus === 'ok' && status === 'ok')
-    const matchCat = filterCategory === 'all' || d.category === filterCategory
-    return matchSearch && matchStatus && matchCat
-  })
+  const filtered = docs
+    .filter(d => {
+      const q = search.toLowerCase()
+      const matchSearch = !search ||
+        d.name?.toLowerCase().includes(q) ||
+        d.docType?.toLowerCase().includes(q) ||
+        d.linkedName?.toLowerCase().includes(q)
+      const status = calculateDocumentStatus(d.expiryDate).status
+      const matchStatus =
+        filterStatus === 'all' ||
+        (filterStatus === 'expired' && status === 'expired') ||
+        (filterStatus === 'warning' && ['warning','critical'].includes(status)) ||
+        (filterStatus === 'ok' && status === 'ok')
+      const matchCat = filterCategory === 'all' || d.category === filterCategory
+      return matchSearch && matchStatus && matchCat
+    })
+    .sort((a, b) => {
+      // ترتيب أبجدي بالاسم
+      if (sortBy === 'name') {
+        const valA = a.name?.toLowerCase() || ''
+        const valB = b.name?.toLowerCase() || ''
+        return sortDir === 'asc'
+          ? valA.localeCompare(valB, 'ar')
+          : valB.localeCompare(valA, 'ar')
+      }
+      // ترتيب بتاريخ الانتهاء
+      if (sortBy === 'expiryDate') {
+        const valA = a.expiryDate ? new Date(a.expiryDate).getTime() : 0
+        const valB = b.expiryDate ? new Date(b.expiryDate).getTime() : 0
+        return sortDir === 'asc' ? valA - valB : valB - valA
+      }
+      // ترتيب بتاريخ الإصدار
+      if (sortBy === 'issueDate') {
+        const valA = a.issueDate ? new Date(a.issueDate).getTime() : 0
+        const valB = b.issueDate ? new Date(b.issueDate).getTime() : 0
+        return sortDir === 'asc' ? valA - valB : valB - valA
+      }
+      // ترتيب بتاريخ الإضافة (افتراضي)
+      const valA = a.createdAt?.seconds || 0
+      const valB = b.createdAt?.seconds || 0
+      return sortDir === 'asc' ? valA - valB : valB - valA
+    })
 
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
   const paginated  = filtered.slice((currentPage-1)*ITEMS_PER_PAGE, currentPage*ITEMS_PER_PAGE)
@@ -311,6 +334,23 @@ export default function Documents() {
     }
   }
 
+  const toggleSort = (field) => {
+    if (sortBy === field) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortBy(field)
+      setSortDir('asc')
+    }
+    setCurrentPage(1)
+  }
+
+  const SortIcon = ({ field }) => {
+    if (sortBy !== field) return <span className="text-slate-600 text-xs">↕</span>
+    return sortDir === 'asc'
+      ? <ArrowUp className="w-3 h-3 text-primary-400 inline" />
+      : <ArrowDown className="w-3 h-3 text-primary-400 inline" />
+  }
+
   const expiredCount = docs.filter(d => calculateDocumentStatus(d.expiryDate).status === 'expired').length
   const warningCount = docs.filter(d => ['warning','critical'].includes(calculateDocumentStatus(d.expiryDate).status)).length
 
@@ -318,6 +358,7 @@ export default function Documents() {
 
   return (
     <div className="space-y-5 animate-in">
+      {/* Header */}
       <div className="page-header">
         <div>
           <h1 className="text-2xl font-bold text-white">📄 المستندات والوثائق</h1>
@@ -334,35 +375,70 @@ export default function Documents() {
         )}
       </div>
 
-      {/* Filters */}
+      {/* Filters + Sort */}
       <div className="flex flex-wrap gap-3">
         <div className="flex-1 min-w-[200px]">
           <SearchInput value={search} onChange={setSearch} placeholder="بحث في المستندات..." />
         </div>
-        <select value={filterStatus}
+        <select
+          value={filterStatus}
           onChange={e => { setFilterStatus(e.target.value); setCurrentPage(1) }}
-          className="input-field w-auto">
+          className="input-field w-auto"
+        >
           <option value="all">جميع الحالات</option>
           <option value="expired">منتهية</option>
           <option value="warning">تنتهي قريباً</option>
           <option value="ok">سارية</option>
         </select>
-        <select value={filterCategory}
+        <select
+          value={filterCategory}
           onChange={e => { setFilterCategory(e.target.value); setCurrentPage(1) }}
-          className="input-field w-auto">
+          className="input-field w-auto"
+        >
           <option value="all">جميع الأنواع</option>
           <option value="equipment">معدات/سيارات</option>
           <option value="employee">موظفين</option>
         </select>
+        <select
+          value={sortBy}
+          onChange={e => { setSortBy(e.target.value); setCurrentPage(1) }}
+          className="input-field w-auto"
+        >
+          <option value="createdAt">ترتيب: تاريخ الإضافة</option>
+          <option value="name">ترتيب: الاسم أبجدي</option>
+          <option value="expiryDate">ترتيب: تاريخ الانتهاء</option>
+          <option value="issueDate">ترتيب: تاريخ الإصدار</option>
+        </select>
+        <button
+          onClick={() => setSortDir(prev => prev === 'asc' ? 'desc' : 'asc')}
+          className="btn-secondary px-3 py-2 text-sm flex items-center gap-1"
+          title={sortDir === 'asc' ? 'تصاعدي' : 'تنازلي'}
+        >
+          {sortDir === 'asc'
+            ? <><ArrowUp className="w-4 h-4" /> تصاعدي</>
+            : <><ArrowDown className="w-4 h-4" /> تنازلي</>
+          }
+        </button>
       </div>
 
+      {/* Results count */}
+      {search && (
+        <div className="text-sm text-slate-400">
+          نتائج البحث: <strong className="text-white">{filtered.length}</strong> مستند
+        </div>
+      )}
+
       {filtered.length === 0 ? (
-        <EmptyState icon={FileText} title="لا توجد مستندات" message="أضف أول مستند للبدء"
-          action={hasPermission('addDocuments') && (
+        <EmptyState
+          icon={FileText}
+          title="لا توجد مستندات"
+          message={search ? 'لا توجد نتائج لبحثك' : 'أضف أول مستند للبدء'}
+          action={!search && hasPermission('addDocuments') && (
             <button onClick={() => setShowForm(true)} className="btn-primary">
               <Plus className="w-4 h-4" /> إضافة مستند
             </button>
-          )} />
+          )}
+        />
       ) : (
         <>
           <div className="card overflow-hidden p-0">
@@ -370,11 +446,33 @@ export default function Documents() {
               <table className="w-full">
                 <thead>
                   <tr className="table-header">
-                    <th className="px-4 py-3 text-right">المستند</th>
+                    {/* أعمدة قابلة للترتيب */}
+                    <th
+                      className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
+                      onClick={() => toggleSort('name')}
+                    >
+                      <span className="flex items-center gap-1">
+                        المستند <SortIcon field="name" />
+                      </span>
+                    </th>
                     <th className="px-4 py-3 text-right">النوع</th>
                     <th className="px-4 py-3 text-right">مرتبط بـ</th>
-                    <th className="px-4 py-3 text-right">الإصدار</th>
-                    <th className="px-4 py-3 text-right">الانتهاء</th>
+                    <th
+                      className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
+                      onClick={() => toggleSort('issueDate')}
+                    >
+                      <span className="flex items-center gap-1">
+                        الإصدار <SortIcon field="issueDate" />
+                      </span>
+                    </th>
+                    <th
+                      className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
+                      onClick={() => toggleSort('expiryDate')}
+                    >
+                      <span className="flex items-center gap-1">
+                        الانتهاء <SortIcon field="expiryDate" />
+                      </span>
+                    </th>
                     <th className="px-4 py-3 text-right">الحالة</th>
                     <th className="px-4 py-3 text-right">الملفات</th>
                     <th className="px-4 py-3"></th>
@@ -397,39 +495,50 @@ export default function Documents() {
                         <td className="px-4 py-3 text-sm text-slate-300">{doc.linkedName || '—'}</td>
                         <td className="px-4 py-3 text-sm text-slate-400">{doc.issueDate || '—'}</td>
                         <td className="px-4 py-3 text-sm text-slate-400">{doc.expiryDate || '—'}</td>
-                        <td className="px-4 py-3"><DocStatusBadge expiryDate={doc.expiryDate} /></td>
+                        <td className="px-4 py-3">
+                          <DocStatusBadge expiryDate={doc.expiryDate} />
+                        </td>
 
                         {/* الملفات المرفقة */}
                         <td className="px-4 py-3">
-                          <div className="flex gap-1 flex-wrap">
+                          <div className="flex gap-1 flex-wrap items-center">
                             {attachments.length === 0 ? (
                               <span className="text-slate-600 text-xs">لا يوجد</span>
                             ) : (
-                              attachments.map((att, i) => (
-                                <a key={i} href={att.fileUrl} target="_blank" rel="noopener noreferrer"
-                                  title={att.fileName || `ملف ${i+1}`}
-                                  className="text-xl hover:scale-110 transition-transform">
-                                  {getFileIcon(att.fileName)}
-                                </a>
-                              ))
-                            )}
-                            {attachments.length > 0 && (
-                              <span className="text-xs text-slate-500 self-center">
-                                ({attachments.length})
-                              </span>
+                              <>
+                                {attachments.map((att, i) => (
+                                  <a
+                                    key={i}
+                                    href={att.fileUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title={att.fileName || `ملف ${i+1}`}
+                                    className="text-xl hover:scale-110 transition-transform"
+                                  >
+                                    {getFileIcon(att.fileName)}
+                                  </a>
+                                ))}
+                                <span className="text-xs text-slate-500">
+                                  ({attachments.length})
+                                </span>
+                              </>
                             )}
                           </div>
                         </td>
 
                         <td className="px-4 py-3">
                           <div className="flex gap-1">
-                            <button onClick={() => setEditDoc(doc)}
-                              className="text-blue-400 hover:text-blue-300 p-1">
+                            <button
+                              onClick={() => setEditDoc(doc)}
+                              className="text-blue-400 hover:text-blue-300 p-1"
+                            >
                               <Edit2 className="w-4 h-4" />
                             </button>
                             {hasPermission('manageDocuments') && (
-                              <button onClick={() => setDeleteTarget(doc)}
-                                className="text-red-400 hover:text-red-300 p-1">
+                              <button
+                                onClick={() => setDeleteTarget(doc)}
+                                className="text-red-400 hover:text-red-300 p-1"
+                              >
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             )}
