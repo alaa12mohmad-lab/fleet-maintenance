@@ -2,20 +2,36 @@
 import { useState } from 'react'
 import { Modal } from '../Common'
 import { addDocument } from '../../firebase/firestore'
-import { storage } from '../../firebase/config'
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
 import { Upload, FileText } from 'lucide-react'
 
 const EQUIPMENT_DOC_TYPES = ['رخصة سير', 'تأمين', 'فحص دوري', 'استمارة', 'عقد', 'أخرى']
-const EMPLOYEE_DOC_TYPES = ['إقامة', 'تأمين طبي', 'رخصة قيادة', 'شهادة', 'فحص طبي', 'أخرى']
+const EMPLOYEE_DOC_TYPES  = ['إقامة', 'تأمين طبي', 'رخصة قيادة', 'شهادة', 'فحص طبي', 'أخرى']
+
+const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
+
+async function uploadToCloudinary(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('upload_preset', UPLOAD_PRESET)
+  formData.append('folder', 'fleet_documents')
+
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
+    { method: 'POST', body: formData }
+  )
+  if (!res.ok) throw new Error('فشل رفع الملف')
+  const data = await res.json()
+  return { fileUrl: data.secure_url, fileName: file.name }
+}
 
 export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVehicles = [] }) {
   const { currentUser } = useAuth()
   const [loading, setLoading] = useState(false)
-  const [file, setFile] = useState(null)
-  const [form, setForm] = useState({
+  const [file, setFile]       = useState(null)
+  const [form, setForm]       = useState({
     name: '', docType: '', category: 'equipment',
     linkedId: '', linkedName: '', linkedType: '',
     issueDate: '', expiryDate: '', notes: '',
@@ -24,16 +40,20 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm(prev => ({ ...prev, [name]: value }))
-    if (name === 'category') setForm(prev => ({ ...prev, [name]: value, linkedId: '', linkedName: '', linkedType: '', docType: '' }))
+    if (name === 'category') {
+      setForm(prev => ({ ...prev, [name]: value, linkedId: '', linkedName: '', linkedType: '', docType: '' }))
+    }
   }
 
   const handleLinkedChange = (e) => {
     const val = e.target.value
     if (!val) return setForm(prev => ({ ...prev, linkedId: '', linkedName: '', linkedType: '' }))
     const [type, id] = val.split('::')
-    const allItems = [...allEquipment.map(i => ({ ...i, _type: 'equipment' })), ...allVehicles.map(i => ({ ...i, _type: 'vehicle' }))]
-    const employees = [] // يمكن إضافة موظفين لاحقاً
-    const found = allItems.find(i => i.id === id) || employees.find(i => i.id === id)
+    const allItems = [
+      ...allEquipment.map(i => ({ ...i, _type: 'equipment' })),
+      ...allVehicles.map(i => ({ ...i, _type: 'vehicle' })),
+    ]
+    const found = allItems.find(i => i.id === id)
     if (found) setForm(prev => ({ ...prev, linkedId: id, linkedName: found.name, linkedType: type }))
   }
 
@@ -44,12 +64,10 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
     try {
       let fileUrl = '', fileName = ''
       if (file) {
-        const storageRef = ref(storage, `documents/${Date.now()}_${file.name}`)
-        await uploadBytes(storageRef, file)
-        fileUrl = await getDownloadURL(storageRef)
-        fileName = file.name
+        const result = await uploadToCloudinary(file)
+        fileUrl  = result.fileUrl
+        fileName = result.fileName
       }
-
       await addDocument({ ...form, fileUrl, fileName }, currentUser.uid)
       toast.success('تم إضافة المستند بنجاح')
       setForm({ name: '', docType: '', category: 'equipment', linkedId: '', linkedName: '', linkedType: '', issueDate: '', expiryDate: '', notes: '' })
@@ -72,7 +90,6 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
             <label className="label">اسم المستند *</label>
             <input name="name" value={form.name} onChange={handleChange} className="input-field" placeholder="اسم المستند" required />
           </div>
-
           <div>
             <label className="label">تصنيف المستند</label>
             <select name="category" value={form.category} onChange={handleChange} className="input-field">
@@ -80,7 +97,6 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
               <option value="employee">موظف</option>
             </select>
           </div>
-
           <div>
             <label className="label">نوع المستند</label>
             <select name="docType" value={form.docType} onChange={handleChange} className="input-field">
@@ -88,7 +104,6 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
               {docTypes.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
-
           {form.category === 'equipment' && (
             <div className="col-span-2">
               <label className="label">مرتبط بـ (معدة / سيارة)</label>
@@ -103,7 +118,6 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
               </select>
             </div>
           )}
-
           <div>
             <label className="label">تاريخ الإصدار</label>
             <input type="date" name="issueDate" value={form.issueDate} onChange={handleChange} className="input-field" />
@@ -115,11 +129,11 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
         </div>
 
         <div>
-          <label className="label">الملف المرفق</label>
+          <label className="label">الملف المرفق (PDF أو صورة)</label>
           <label className="flex items-center gap-3 p-3 border-2 border-dashed border-slate-600 rounded-xl cursor-pointer hover:border-primary-500 transition-colors">
             <Upload className="w-5 h-5 text-slate-400" />
             <span className="text-sm text-slate-400">
-              {file ? file.name : 'اضغط لرفع ملف (PDF, صورة)'}
+              {file ? file.name : 'اضغط لرفع ملف'}
             </span>
             <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp"
               onChange={(e) => setFile(e.target.files[0])} />
