@@ -4,7 +4,7 @@ import { useOutletContext } from 'react-router-dom'
 import { subscribeToCollection, deleteItem, updateItem } from '../firebase/firestore'
 import DocumentForm from '../components/Documents/DocumentForm'
 import { DocStatusBadge, SearchInput, EmptyState, ConfirmDialog, LoadingSpinner, Pagination, Modal } from '../components/Common'
-import { FileText, Plus, Trash2, Eye, Edit2, Filter } from 'lucide-react'
+import { FileText, Plus, Trash2, Eye, Edit2, Upload } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { calculateDocumentStatus } from '../utils/calculations'
 import toast from 'react-hot-toast'
@@ -16,13 +16,17 @@ const EMPLOYEE_DOC_TYPES  = ['إقامة', 'تأمين طبي', 'رخصة قيا
 
 // ─── Edit Modal ───────────────────────────────────────────────
 function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
-  const [form, setForm] = useState({})
+  const [form, setForm]       = useState({})
   const [loading, setLoading] = useState(false)
   const [newFile, setNewFile] = useState(null)
   const [uploading, setUploading] = useState(false)
 
-  const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+  const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
   const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
+
+  useEffect(() => {
+    if (doc) { setForm({ ...doc }); setNewFile(null) }
+  }, [doc])
 
   const uploadToCloudinary = async (file) => {
     const formData = new FormData()
@@ -37,10 +41,6 @@ function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
     const data = await res.json()
     return { fileUrl: data.secure_url, fileName: file.name }
   }
-
-  useEffect(() => {
-    if (doc) setForm({ ...doc })
-  }, [doc])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -63,13 +63,23 @@ function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
     if (!form.name) return toast.error('اسم المستند مطلوب')
     setLoading(true)
     try {
-      await updateItem('documents', doc.id, form)
+      let updatedForm = { ...form }
+      if (newFile) {
+        setUploading(true)
+        const result = await uploadToCloudinary(newFile)
+        updatedForm.fileUrl  = result.fileUrl
+        updatedForm.fileName = result.fileName
+        setUploading(false)
+      }
+      await updateItem('documents', doc.id, updatedForm)
       toast.success('تم التحديث بنجاح')
+      setNewFile(null)
       onClose()
-    } catch {
-      toast.error('فشل التحديث')
+    } catch (err) {
+      toast.error('فشل التحديث: ' + err.message)
     } finally {
       setLoading(false)
+      setUploading(false)
     }
   }
 
@@ -128,11 +138,31 @@ function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
             <textarea name="notes" value={form.notes || ''} onChange={handleChange}
               className="input-field h-16 resize-none" placeholder="ملاحظات..." />
           </div>
+
+          {/* تغيير الملف */}
+          <div className="col-span-2">
+            <label className="label">تغيير الملف المرفق (اختياري)</label>
+            <label className="flex items-center gap-3 p-3 border-2 border-dashed border-slate-600 rounded-xl cursor-pointer hover:border-primary-500 transition-colors">
+              <Upload className="w-5 h-5 text-slate-400" />
+              <span className="text-sm text-slate-400">
+                {newFile ? newFile.name : form.fileName ? `الملف الحالي: ${form.fileName}` : 'اضغط لتغيير الملف'}
+              </span>
+              <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp"
+                onChange={(e) => setNewFile(e.target.files[0])} />
+            </label>
+            {form.fileUrl && !newFile && (
+              <a href={form.fileUrl} target="_blank" rel="noopener noreferrer"
+                className="text-xs text-primary-400 hover:underline mt-1 block">
+                👁️ عرض الملف الحالي
+              </a>
+            )}
+          </div>
         </div>
+
         <div className="flex gap-3 pt-2">
           <button onClick={onClose} className="btn-secondary flex-1">إلغاء</button>
-          <button onClick={handleSave} disabled={loading} className="btn-primary flex-1 justify-center">
-            {loading ? 'جاري الحفظ...' : 'حفظ التغييرات'}
+          <button onClick={handleSave} disabled={loading || uploading} className="btn-primary flex-1 justify-center">
+            {uploading ? 'جاري رفع الملف...' : loading ? 'جاري الحفظ...' : 'حفظ التغييرات'}
           </button>
         </div>
       </div>
@@ -144,15 +174,15 @@ function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
 export default function Documents() {
   const { equipment = [], vehicles = [] } = useOutletContext() || {}
   const { hasPermission } = useAuth()
-  const [docs, setDocs]               = useState([])
-  const [loading, setLoading]         = useState(true)
-  const [showForm, setShowForm]       = useState(false)
-  const [editDoc, setEditDoc]         = useState(null)
-  const [search, setSearch]           = useState('')
-  const [filterStatus, setFilterStatus]     = useState('all')
+  const [docs, setDocs]                   = useState([])
+  const [loading, setLoading]             = useState(true)
+  const [showForm, setShowForm]           = useState(false)
+  const [editDoc, setEditDoc]             = useState(null)
+  const [search, setSearch]               = useState('')
+  const [filterStatus, setFilterStatus]   = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
-  const [deleteTarget, setDeleteTarget]     = useState(null)
-  const [currentPage, setCurrentPage]       = useState(1)
+  const [deleteTarget, setDeleteTarget]   = useState(null)
+  const [currentPage, setCurrentPage]     = useState(1)
 
   useEffect(() => {
     const unsub = subscribeToCollection('documents', data => {
@@ -224,13 +254,17 @@ export default function Documents() {
         <div className="flex-1 min-w-[200px]">
           <SearchInput value={search} onChange={setSearch} placeholder="بحث في المستندات..." />
         </div>
-        <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setCurrentPage(1) }} className="input-field w-auto">
+        <select value={filterStatus}
+          onChange={e => { setFilterStatus(e.target.value); setCurrentPage(1) }}
+          className="input-field w-auto">
           <option value="all">جميع الحالات</option>
           <option value="expired">منتهية</option>
           <option value="warning">تنتهي قريباً</option>
           <option value="ok">سارية</option>
         </select>
-        <select value={filterCategory} onChange={e => { setFilterCategory(e.target.value); setCurrentPage(1) }} className="input-field w-auto">
+        <select value={filterCategory}
+          onChange={e => { setFilterCategory(e.target.value); setCurrentPage(1) }}
+          className="input-field w-auto">
           <option value="all">جميع الأنواع</option>
           <option value="equipment">معدات/سيارات</option>
           <option value="employee">موظفين</option>
@@ -265,7 +299,9 @@ export default function Documents() {
                     <tr key={doc.id} className="table-row">
                       <td className="px-4 py-3">
                         <div className="font-semibold text-white text-sm">{doc.name}</div>
-                        {doc.notes && <div className="text-xs text-slate-500 truncate max-w-[150px]">{doc.notes}</div>}
+                        {doc.notes && (
+                          <div className="text-xs text-slate-500 truncate max-w-[150px]">{doc.notes}</div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-300">{doc.docType || '—'}</td>
                       <td className="px-4 py-3 text-sm text-slate-300">{doc.linkedName || '—'}</td>
@@ -302,10 +338,26 @@ export default function Documents() {
         </>
       )}
 
-      <DocumentForm isOpen={showForm} onClose={() => setShowForm(false)} allEquipment={equipment} allVehicles={vehicles} />
-      <EditDocModal isOpen={!!editDoc} onClose={() => setEditDoc(null)} doc={editDoc} allEquipment={equipment} allVehicles={vehicles} />
-      <ConfirmDialog isOpen={!!deleteTarget} onConfirm={handleDelete} onCancel={() => setDeleteTarget(null)}
-        title="حذف المستند" message={`هل أنت متأكد من حذف "${deleteTarget?.name}"؟`} />
+      <DocumentForm
+        isOpen={showForm}
+        onClose={() => setShowForm(false)}
+        allEquipment={equipment}
+        allVehicles={vehicles}
+      />
+      <EditDocModal
+        isOpen={!!editDoc}
+        onClose={() => setEditDoc(null)}
+        doc={editDoc}
+        allEquipment={equipment}
+        allVehicles={vehicles}
+      />
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+        title="حذف المستند"
+        message={`هل أنت متأكد من حذف "${deleteTarget?.name}"؟`}
+      />
     </div>
   )
 }
