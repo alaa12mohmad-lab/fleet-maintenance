@@ -113,7 +113,7 @@ export const generateAlerts = async (allEquipment, allVehicles, allDocuments) =>
 
     const nextChange = lastOil + interval
     const remaining = nextChange - current
-    const warningThreshold = interval * 0.15 // تنبيه عند 15% متبقي
+    const warningThreshold = item.meterType === 'hours' ? 50 : 500 // تنبيه عند 15% متبقي
 
     if (remaining <= 0) {
       alerts.push({
