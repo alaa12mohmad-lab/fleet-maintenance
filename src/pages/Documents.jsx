@@ -4,43 +4,50 @@ import { useOutletContext } from 'react-router-dom'
 import { subscribeToCollection, deleteItem, updateItem } from '../firebase/firestore'
 import DocumentForm from '../components/Documents/DocumentForm'
 import { DocStatusBadge, SearchInput, EmptyState, ConfirmDialog, LoadingSpinner, Pagination, Modal } from '../components/Common'
-import { FileText, Plus, Trash2, Eye, Edit2, Upload } from 'lucide-react'
+import { FileText, Plus, Trash2, Eye, Edit2, Upload, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { calculateDocumentStatus } from '../utils/calculations'
 import toast from 'react-hot-toast'
 
 const ITEMS_PER_PAGE = 15
-const CATEGORY_LABELS = { equipment: 'معدة/سيارة', employee: 'موظف' }
 const EQUIPMENT_DOC_TYPES = ['رخصة سير', 'تأمين', 'فحص دوري', 'استمارة', 'عقد', 'أخرى']
 const EMPLOYEE_DOC_TYPES  = ['إقامة', 'تأمين طبي', 'رخصة قيادة', 'شهادة', 'فحص طبي', 'أخرى']
 
+const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
+
+async function uploadToCloudinary(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('upload_preset', UPLOAD_PRESET)
+  formData.append('folder', 'fleet_documents')
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
+    { method: 'POST', body: formData }
+  )
+  if (!res.ok) throw new Error('فشل رفع الملف')
+  const data = await res.json()
+  return { fileUrl: data.secure_url, fileName: file.name, fileType: file.type }
+}
+
+function getFileIcon(fileName) {
+  if (!fileName) return '📎'
+  if (fileName.toLowerCase().includes('.pdf')) return '📄'
+  if (/\.(jpg|jpeg|png|webp|gif)$/i.test(fileName)) return '🖼️'
+  return '📎'
+}
+
 // ─── Edit Modal ───────────────────────────────────────────────
 function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
-  const [form, setForm]       = useState({})
-  const [loading, setLoading] = useState(false)
-  const [newFile, setNewFile] = useState(null)
+  const [form, setForm]         = useState({})
+  const [loading, setLoading]   = useState(false)
   const [uploading, setUploading] = useState(false)
-
-  const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
-  const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
+  const [newFiles, setNewFiles] = useState([])
+  const [progress, setProgress] = useState('')
 
   useEffect(() => {
-    if (doc) { setForm({ ...doc }); setNewFile(null) }
+    if (doc) { setForm({ ...doc }); setNewFiles([]) }
   }, [doc])
-
-  const uploadToCloudinary = async (file) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('upload_preset', UPLOAD_PRESET)
-    formData.append('folder', 'fleet_documents')
-    const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
-      { method: 'POST', body: formData }
-    )
-    if (!res.ok) throw new Error('فشل رفع الملف')
-    const data = await res.json()
-    return { fileUrl: data.secure_url, fileName: file.name }
-  }
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -59,31 +66,71 @@ function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
     if (found) setForm(prev => ({ ...prev, linkedId: id, linkedName: found.name, linkedType: type }))
   }
 
+  const handleNewFiles = (e) => {
+    const selected = Array.from(e.target.files)
+    setNewFiles(prev => {
+      const existing = prev.map(f => f.name)
+      return [...prev, ...selected.filter(f => !existing.includes(f.name))]
+    })
+    e.target.value = ''
+  }
+
+  const removeNewFile = (i) => setNewFiles(prev => prev.filter((_, idx) => idx !== i))
+
+  const removeExistingFile = (i) => {
+    const atts = form.attachments?.length
+      ? form.attachments
+      : form.fileUrl ? [{ fileUrl: form.fileUrl, fileName: form.fileName }] : []
+    const updated = atts.filter((_, idx) => idx !== i)
+    setForm(prev => ({
+      ...prev,
+      attachments: updated,
+      fileUrl:  updated[0]?.fileUrl  || '',
+      fileName: updated[0]?.fileName || '',
+    }))
+  }
+
   const handleSave = async () => {
     if (!form.name) return toast.error('اسم المستند مطلوب')
     setLoading(true)
     try {
       let updatedForm = { ...form }
-      if (newFile) {
+
+      if (newFiles.length > 0) {
         setUploading(true)
-        const result = await uploadToCloudinary(newFile)
-        updatedForm.fileUrl  = result.fileUrl
-        updatedForm.fileName = result.fileName
+        const uploaded = []
+        for (let i = 0; i < newFiles.length; i++) {
+          setProgress(`جاري رفع الملف ${i + 1} من ${newFiles.length}...`)
+          const result = await uploadToCloudinary(newFiles[i])
+          uploaded.push(result)
+        }
+        const existing = form.attachments?.length
+          ? form.attachments
+          : form.fileUrl ? [{ fileUrl: form.fileUrl, fileName: form.fileName }] : []
+        updatedForm.attachments = [...existing, ...uploaded]
+        updatedForm.fileUrl     = updatedForm.attachments[0]?.fileUrl  || ''
+        updatedForm.fileName    = updatedForm.attachments[0]?.fileName || ''
         setUploading(false)
       }
+
       await updateItem('documents', doc.id, updatedForm)
       toast.success('تم التحديث بنجاح')
-      setNewFile(null)
+      setNewFiles([])
+      setProgress('')
       onClose()
     } catch (err) {
       toast.error('فشل التحديث: ' + err.message)
     } finally {
       setLoading(false)
       setUploading(false)
+      setProgress('')
     }
   }
 
   const docTypes = form.category === 'equipment' ? EQUIPMENT_DOC_TYPES : EMPLOYEE_DOC_TYPES
+  const existingFiles = form.attachments?.length
+    ? form.attachments
+    : form.fileUrl ? [{ fileUrl: form.fileUrl, fileName: form.fileName }] : []
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="تعديل المستند" size="lg">
@@ -139,30 +186,69 @@ function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
               className="input-field h-16 resize-none" placeholder="ملاحظات..." />
           </div>
 
-          {/* تغيير الملف */}
+          {/* الملفات الحالية */}
+          {existingFiles.length > 0 && (
+            <div className="col-span-2">
+              <label className="label">الملفات الحالية ({existingFiles.length})</label>
+              <div className="space-y-2">
+                {existingFiles.map((att, i) => (
+                  <div key={i} className="flex items-center justify-between p-2.5 bg-slate-900 rounded-lg">
+                    <a href={att.fileUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-sm text-primary-400 hover:text-primary-300 min-w-0 flex-1">
+                      <span className="text-base flex-shrink-0">{getFileIcon(att.fileName)}</span>
+                      <span className="truncate">{att.fileName || `ملف ${i + 1}`}</span>
+                    </a>
+                    <button type="button" onClick={() => removeExistingFile(i)}
+                      className="text-red-400 hover:text-red-300 p-1 flex-shrink-0 mr-2">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* إضافة ملفات جديدة */}
           <div className="col-span-2">
-            <label className="label">تغيير الملف المرفق (اختياري)</label>
+            <label className="label">إضافة ملفات جديدة</label>
             <label className="flex items-center gap-3 p-3 border-2 border-dashed border-slate-600 rounded-xl cursor-pointer hover:border-primary-500 transition-colors">
-              <Upload className="w-5 h-5 text-slate-400" />
+              <Upload className="w-5 h-5 text-slate-400 flex-shrink-0" />
               <span className="text-sm text-slate-400">
-                {newFile ? newFile.name : form.fileName ? `الملف الحالي: ${form.fileName}` : 'اضغط لتغيير الملف'}
+                {newFiles.length > 0 ? `${newFiles.length} ملف جديد` : 'اضغط لإضافة ملفات (PDF، صور)'}
               </span>
               <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp"
-                onChange={(e) => setNewFile(e.target.files[0])} />
+                multiple onChange={handleNewFiles} />
             </label>
-            {form.fileUrl && !newFile && (
-              <a href={form.fileUrl} target="_blank" rel="noopener noreferrer"
-                className="text-xs text-primary-400 hover:underline mt-1 block">
-                👁️ عرض الملف الحالي
-              </a>
+            {newFiles.length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                {newFiles.map((file, i) => (
+                  <div key={i} className="flex items-center justify-between p-2 bg-slate-900 rounded-lg">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="text-base flex-shrink-0">{getFileIcon(file.name)}</span>
+                      <span className="text-sm text-slate-300 truncate">{file.name}</span>
+                      <span className="text-xs text-slate-500 flex-shrink-0">({(file.size/1024).toFixed(0)} KB)</span>
+                    </div>
+                    <button type="button" onClick={() => removeNewFile(i)}
+                      className="text-red-400 hover:text-red-300 p-1 flex-shrink-0">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
 
+        {progress && (
+          <div className="p-3 bg-primary-900/30 border border-primary-700/40 rounded-lg text-sm text-primary-300 text-center">
+            ⏳ {progress}
+          </div>
+        )}
+
         <div className="flex gap-3 pt-2">
           <button onClick={onClose} className="btn-secondary flex-1">إلغاء</button>
           <button onClick={handleSave} disabled={loading || uploading} className="btn-primary flex-1 justify-center">
-            {uploading ? 'جاري رفع الملف...' : loading ? 'جاري الحفظ...' : 'حفظ التغييرات'}
+            {uploading ? progress || 'جاري الرفع...' : loading ? 'جاري الحفظ...' : 'حفظ التغييرات'}
           </button>
         </div>
       </div>
@@ -174,23 +260,22 @@ function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
 export default function Documents() {
   const { equipment = [], vehicles = [] } = useOutletContext() || {}
   const { hasPermission } = useAuth()
-  const [docs, setDocs]                   = useState([])
-  const [loading, setLoading]             = useState(true)
-  const [showForm, setShowForm]           = useState(false)
-  const [editDoc, setEditDoc]             = useState(null)
-  const [search, setSearch]               = useState('')
-  const [filterStatus, setFilterStatus]   = useState('all')
+  const [docs, setDocs]                     = useState([])
+  const [loading, setLoading]               = useState(true)
+  const [showForm, setShowForm]             = useState(false)
+  const [editDoc, setEditDoc]               = useState(null)
+  const [search, setSearch]                 = useState('')
+  const [filterStatus, setFilterStatus]     = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
-  const [deleteTarget, setDeleteTarget]   = useState(null)
-  const [currentPage, setCurrentPage]     = useState(1)
+  const [deleteTarget, setDeleteTarget]     = useState(null)
+  const [currentPage, setCurrentPage]       = useState(1)
 
   useEffect(() => {
     const unsub = subscribeToCollection('documents', data => {
       setDocs(data.sort((a, b) => {
-        const order = { expired: 0, critical: 1, warning: 2, ok: 3, unknown: 4 }
-        const sa = calculateDocumentStatus(a.expiryDate).status
-        const sb = calculateDocumentStatus(b.expiryDate).status
-        return (order[sa] || 4) - (order[sb] || 4)
+        const order = { expired:0, critical:1, warning:2, ok:3, unknown:4 }
+        return (order[calculateDocumentStatus(a.expiryDate).status] || 4) -
+               (order[calculateDocumentStatus(b.expiryDate).status] || 4)
       }))
       setLoading(false)
     })
@@ -207,14 +292,14 @@ export default function Documents() {
     const matchStatus =
       filterStatus === 'all' ||
       (filterStatus === 'expired' && status === 'expired') ||
-      (filterStatus === 'warning' && ['warning', 'critical'].includes(status)) ||
+      (filterStatus === 'warning' && ['warning','critical'].includes(status)) ||
       (filterStatus === 'ok' && status === 'ok')
     const matchCat = filterCategory === 'all' || d.category === filterCategory
     return matchSearch && matchStatus && matchCat
   })
 
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
-  const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
+  const paginated  = filtered.slice((currentPage-1)*ITEMS_PER_PAGE, currentPage*ITEMS_PER_PAGE)
 
   const handleDelete = async () => {
     try {
@@ -227,7 +312,7 @@ export default function Documents() {
   }
 
   const expiredCount = docs.filter(d => calculateDocumentStatus(d.expiryDate).status === 'expired').length
-  const warningCount = docs.filter(d => ['warning', 'critical'].includes(calculateDocumentStatus(d.expiryDate).status)).length
+  const warningCount = docs.filter(d => ['warning','critical'].includes(calculateDocumentStatus(d.expiryDate).status)).length
 
   if (loading) return <LoadingSpinner />
 
@@ -291,45 +376,68 @@ export default function Documents() {
                     <th className="px-4 py-3 text-right">الإصدار</th>
                     <th className="px-4 py-3 text-right">الانتهاء</th>
                     <th className="px-4 py-3 text-right">الحالة</th>
+                    <th className="px-4 py-3 text-right">الملفات</th>
                     <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {paginated.map(doc => (
-                    <tr key={doc.id} className="table-row">
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-white text-sm">{doc.name}</div>
-                        {doc.notes && (
-                          <div className="text-xs text-slate-500 truncate max-w-[150px]">{doc.notes}</div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-300">{doc.docType || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-300">{doc.linkedName || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-400">{doc.issueDate || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-400">{doc.expiryDate || '—'}</td>
-                      <td className="px-4 py-3"><DocStatusBadge expiryDate={doc.expiryDate} /></td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-1">
-                          {doc.fileUrl && (
-                            <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer"
-                              className="text-primary-400 hover:text-primary-300 p-1">
-                              <Eye className="w-4 h-4" />
-                            </a>
+                  {paginated.map(doc => {
+                    const attachments = doc.attachments?.length
+                      ? doc.attachments
+                      : doc.fileUrl ? [{ fileUrl: doc.fileUrl, fileName: doc.fileName }] : []
+                    return (
+                      <tr key={doc.id} className="table-row">
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-white text-sm">{doc.name}</div>
+                          {doc.notes && (
+                            <div className="text-xs text-slate-500 truncate max-w-[150px]">{doc.notes}</div>
                           )}
-                          <button onClick={() => setEditDoc(doc)}
-                            className="text-blue-400 hover:text-blue-300 p-1">
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          {hasPermission('manageDocuments') && (
-                            <button onClick={() => setDeleteTarget(doc)}
-                              className="text-red-400 hover:text-red-300 p-1">
-                              <Trash2 className="w-4 h-4" />
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-300">{doc.docType || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-300">{doc.linkedName || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-400">{doc.issueDate || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-400">{doc.expiryDate || '—'}</td>
+                        <td className="px-4 py-3"><DocStatusBadge expiryDate={doc.expiryDate} /></td>
+
+                        {/* الملفات المرفقة */}
+                        <td className="px-4 py-3">
+                          <div className="flex gap-1 flex-wrap">
+                            {attachments.length === 0 ? (
+                              <span className="text-slate-600 text-xs">لا يوجد</span>
+                            ) : (
+                              attachments.map((att, i) => (
+                                <a key={i} href={att.fileUrl} target="_blank" rel="noopener noreferrer"
+                                  title={att.fileName || `ملف ${i+1}`}
+                                  className="text-xl hover:scale-110 transition-transform">
+                                  {getFileIcon(att.fileName)}
+                                </a>
+                              ))
+                            )}
+                            {attachments.length > 0 && (
+                              <span className="text-xs text-slate-500 self-center">
+                                ({attachments.length})
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <div className="flex gap-1">
+                            <button onClick={() => setEditDoc(doc)}
+                              className="text-blue-400 hover:text-blue-300 p-1">
+                              <Edit2 className="w-4 h-4" />
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {hasPermission('manageDocuments') && (
+                              <button onClick={() => setDeleteTarget(doc)}
+                                className="text-red-400 hover:text-red-300 p-1">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
