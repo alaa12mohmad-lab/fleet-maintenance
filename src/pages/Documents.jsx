@@ -19,20 +19,27 @@ const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
 async function uploadToCloudinary(file) {
   const isPDF = file.type === 'application/pdf'
   const resourceType = isPDF ? 'raw' : 'image'
-
   const formData = new FormData()
   formData.append('file', file)
   formData.append('upload_preset', UPLOAD_PRESET)
   formData.append('folder', 'fleet_documents')
-
   const res = await fetch(
     `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`,
     { method: 'POST', body: formData }
   )
   if (!res.ok) throw new Error('فشل رفع الملف')
   const data = await res.json()
-
   return { fileUrl: data.secure_url, fileName: file.name, fileType: file.type }
+}
+
+// إصلاح روابط PDF القديمة التي رُفعت بمسار خاطئ
+function fixFileUrl(url, fileName) {
+  if (!url) return url
+  const isPDF = fileName?.toLowerCase().endsWith('.pdf')
+  if (isPDF && url.includes('/image/upload/')) {
+    return url.replace('/image/upload/', '/raw/upload/')
+  }
+  return url
 }
 
 function getFileIcon(fileName) {
@@ -196,10 +203,11 @@ function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
               <div className="space-y-2">
                 {existingFiles.map((att, i) => {
                   const isPDF = att.fileName?.toLowerCase().endsWith('.pdf')
+                  const url = fixFileUrl(att.fileUrl, att.fileName)
                   return (
                     <div key={i} className="flex items-center justify-between p-2.5 bg-slate-900 rounded-lg">
                       <a
-                        href={att.fileUrl}
+                        href={url}
                         target="_blank"
                         rel="noopener noreferrer"
                         download={isPDF ? att.fileName : undefined}
@@ -367,7 +375,6 @@ export default function Documents() {
 
   return (
     <div className="space-y-5 animate-in">
-      {/* Header */}
       <div className="page-header">
         <div>
           <h1 className="text-2xl font-bold text-white">📄 المستندات والوثائق</h1>
@@ -384,35 +391,28 @@ export default function Documents() {
         )}
       </div>
 
-      {/* Filters + Sort */}
       <div className="flex flex-wrap gap-3">
         <div className="flex-1 min-w-[200px]">
           <SearchInput value={search} onChange={setSearch} placeholder="بحث في المستندات..." />
         </div>
-        <select
-          value={filterStatus}
+        <select value={filterStatus}
           onChange={e => { setFilterStatus(e.target.value); setCurrentPage(1) }}
-          className="input-field w-auto"
-        >
+          className="input-field w-auto">
           <option value="all">جميع الحالات</option>
           <option value="expired">منتهية</option>
           <option value="warning">تنتهي قريباً</option>
           <option value="ok">سارية</option>
         </select>
-        <select
-          value={filterCategory}
+        <select value={filterCategory}
           onChange={e => { setFilterCategory(e.target.value); setCurrentPage(1) }}
-          className="input-field w-auto"
-        >
+          className="input-field w-auto">
           <option value="all">جميع الأنواع</option>
           <option value="equipment">معدات/سيارات</option>
           <option value="employee">موظفين</option>
         </select>
-        <select
-          value={sortBy}
+        <select value={sortBy}
           onChange={e => { setSortBy(e.target.value); setCurrentPage(1) }}
-          className="input-field w-auto"
-        >
+          className="input-field w-auto">
           <option value="createdAt">ترتيب: تاريخ الإضافة</option>
           <option value="name">ترتيب: الاسم أبجدي</option>
           <option value="expiryDate">ترتيب: تاريخ الانتهاء</option>
@@ -420,12 +420,10 @@ export default function Documents() {
         </select>
         <button
           onClick={() => setSortDir(prev => prev === 'asc' ? 'desc' : 'asc')}
-          className="btn-secondary px-3 py-2 text-sm flex items-center gap-1"
-        >
+          className="btn-secondary px-3 py-2 text-sm flex items-center gap-1">
           {sortDir === 'asc'
             ? <><ArrowUp className="w-4 h-4" /> تصاعدي</>
-            : <><ArrowDown className="w-4 h-4" /> تنازلي</>
-          }
+            : <><ArrowDown className="w-4 h-4" /> تنازلي</>}
         </button>
       </div>
 
@@ -453,31 +451,19 @@ export default function Documents() {
               <table className="w-full">
                 <thead>
                   <tr className="table-header">
-                    <th
-                      className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
-                      onClick={() => toggleSort('name')}
-                    >
-                      <span className="flex items-center gap-1">
-                        المستند <SortIcon field="name" />
-                      </span>
+                    <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
+                      onClick={() => toggleSort('name')}>
+                      <span className="flex items-center gap-1">المستند <SortIcon field="name" /></span>
                     </th>
                     <th className="px-4 py-3 text-right">النوع</th>
                     <th className="px-4 py-3 text-right">مرتبط بـ</th>
-                    <th
-                      className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
-                      onClick={() => toggleSort('issueDate')}
-                    >
-                      <span className="flex items-center gap-1">
-                        الإصدار <SortIcon field="issueDate" />
-                      </span>
+                    <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
+                      onClick={() => toggleSort('issueDate')}>
+                      <span className="flex items-center gap-1">الإصدار <SortIcon field="issueDate" /></span>
                     </th>
-                    <th
-                      className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
-                      onClick={() => toggleSort('expiryDate')}
-                    >
-                      <span className="flex items-center gap-1">
-                        الانتهاء <SortIcon field="expiryDate" />
-                      </span>
+                    <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
+                      onClick={() => toggleSort('expiryDate')}>
+                      <span className="flex items-center gap-1">الانتهاء <SortIcon field="expiryDate" /></span>
                     </th>
                     <th className="px-4 py-3 text-right">الحالة</th>
                     <th className="px-4 py-3 text-right">الملفات</th>
@@ -501,9 +487,7 @@ export default function Documents() {
                         <td className="px-4 py-3 text-sm text-slate-300">{doc.linkedName || '—'}</td>
                         <td className="px-4 py-3 text-sm text-slate-400">{doc.issueDate || '—'}</td>
                         <td className="px-4 py-3 text-sm text-slate-400">{doc.expiryDate || '—'}</td>
-                        <td className="px-4 py-3">
-                          <DocStatusBadge expiryDate={doc.expiryDate} />
-                        </td>
+                        <td className="px-4 py-3"><DocStatusBadge expiryDate={doc.expiryDate} /></td>
 
                         {/* الملفات المرفقة */}
                         <td className="px-4 py-3">
@@ -514,10 +498,11 @@ export default function Documents() {
                               <>
                                 {attachments.map((att, i) => {
                                   const isPDF = att.fileName?.toLowerCase().endsWith('.pdf')
+                                  const url = fixFileUrl(att.fileUrl, att.fileName)
                                   return (
                                     <a
                                       key={i}
-                                      href={att.fileUrl}
+                                      href={url}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       title={att.fileName || `ملف ${i+1}`}
@@ -528,9 +513,7 @@ export default function Documents() {
                                     </a>
                                   )
                                 })}
-                                <span className="text-xs text-slate-500">
-                                  ({attachments.length})
-                                </span>
+                                <span className="text-xs text-slate-500">({attachments.length})</span>
                               </>
                             )}
                           </div>
@@ -538,17 +521,13 @@ export default function Documents() {
 
                         <td className="px-4 py-3">
                           <div className="flex gap-1">
-                            <button
-                              onClick={() => setEditDoc(doc)}
-                              className="text-blue-400 hover:text-blue-300 p-1"
-                            >
+                            <button onClick={() => setEditDoc(doc)}
+                              className="text-blue-400 hover:text-blue-300 p-1">
                               <Edit2 className="w-4 h-4" />
                             </button>
                             {hasPermission('manageDocuments') && (
-                              <button
-                                onClick={() => setDeleteTarget(doc)}
-                                className="text-red-400 hover:text-red-300 p-1"
-                              >
+                              <button onClick={() => setDeleteTarget(doc)}
+                                className="text-red-400 hover:text-red-300 p-1">
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             )}
