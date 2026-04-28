@@ -13,18 +13,26 @@ const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
 
 async function uploadToCloudinary(file) {
+  const isPDF = file.type === 'application/pdf'
+  const resourceType = isPDF ? 'raw' : 'image'
+
   const formData = new FormData()
   formData.append('file', file)
   formData.append('upload_preset', UPLOAD_PRESET)
   formData.append('folder', 'fleet_documents')
 
   const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
+    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`,
     { method: 'POST', body: formData }
   )
   if (!res.ok) throw new Error('فشل رفع الملف')
   const data = await res.json()
-  return { fileUrl: data.secure_url, fileName: file.name }
+
+  const fileUrl = isPDF
+    ? data.secure_url
+    : data.secure_url
+
+  return { fileUrl, fileName: file.name, fileType: file.type }
 }
 
 export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVehicles = [] }) {
