@@ -32,11 +32,7 @@ async function uploadToCloudinary(file) {
   if (!res.ok) throw new Error('فشل رفع الملف')
   const data = await res.json()
 
-  const fileUrl = isPDF
-    ? data.secure_url
-    : data.secure_url
-
-  return { fileUrl, fileName: file.name, fileType: file.type }
+  return { fileUrl: data.secure_url, fileName: file.name, fileType: file.type }
 }
 
 function getFileIcon(fileName) {
@@ -198,19 +194,27 @@ function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
             <div className="col-span-2">
               <label className="label">الملفات الحالية ({existingFiles.length})</label>
               <div className="space-y-2">
-                {existingFiles.map((att, i) => (
-                  <div key={i} className="flex items-center justify-between p-2.5 bg-slate-900 rounded-lg">
-                    <a href={att.fileUrl} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-sm text-primary-400 hover:text-primary-300 min-w-0 flex-1">
-                      <span className="text-base flex-shrink-0">{getFileIcon(att.fileName)}</span>
-                      <span className="truncate">{att.fileName || `ملف ${i + 1}`}</span>
-                    </a>
-                    <button type="button" onClick={() => removeExistingFile(i)}
-                      className="text-red-400 hover:text-red-300 p-1 flex-shrink-0 mr-2">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
+                {existingFiles.map((att, i) => {
+                  const isPDF = att.fileName?.toLowerCase().endsWith('.pdf')
+                  return (
+                    <div key={i} className="flex items-center justify-between p-2.5 bg-slate-900 rounded-lg">
+                      <a
+                        href={att.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download={isPDF ? att.fileName : undefined}
+                        className="flex items-center gap-2 text-sm text-primary-400 hover:text-primary-300 min-w-0 flex-1"
+                      >
+                        <span className="text-base flex-shrink-0">{getFileIcon(att.fileName)}</span>
+                        <span className="truncate">{att.fileName || `ملف ${i + 1}`}</span>
+                      </a>
+                      <button type="button" onClick={() => removeExistingFile(i)}
+                        className="text-red-400 hover:text-red-300 p-1 flex-shrink-0 mr-2">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )}
@@ -304,7 +308,6 @@ export default function Documents() {
       return matchSearch && matchStatus && matchCat
     })
     .sort((a, b) => {
-      // ترتيب أبجدي بالاسم
       if (sortBy === 'name') {
         const valA = a.name?.toLowerCase() || ''
         const valB = b.name?.toLowerCase() || ''
@@ -312,19 +315,16 @@ export default function Documents() {
           ? valA.localeCompare(valB, 'ar')
           : valB.localeCompare(valA, 'ar')
       }
-      // ترتيب بتاريخ الانتهاء
       if (sortBy === 'expiryDate') {
         const valA = a.expiryDate ? new Date(a.expiryDate).getTime() : 0
         const valB = b.expiryDate ? new Date(b.expiryDate).getTime() : 0
         return sortDir === 'asc' ? valA - valB : valB - valA
       }
-      // ترتيب بتاريخ الإصدار
       if (sortBy === 'issueDate') {
         const valA = a.issueDate ? new Date(a.issueDate).getTime() : 0
         const valB = b.issueDate ? new Date(b.issueDate).getTime() : 0
         return sortDir === 'asc' ? valA - valB : valB - valA
       }
-      // ترتيب بتاريخ الإضافة (افتراضي)
       const valA = a.createdAt?.seconds || 0
       const valB = b.createdAt?.seconds || 0
       return sortDir === 'asc' ? valA - valB : valB - valA
@@ -421,7 +421,6 @@ export default function Documents() {
         <button
           onClick={() => setSortDir(prev => prev === 'asc' ? 'desc' : 'asc')}
           className="btn-secondary px-3 py-2 text-sm flex items-center gap-1"
-          title={sortDir === 'asc' ? 'تصاعدي' : 'تنازلي'}
         >
           {sortDir === 'asc'
             ? <><ArrowUp className="w-4 h-4" /> تصاعدي</>
@@ -430,7 +429,6 @@ export default function Documents() {
         </button>
       </div>
 
-      {/* Results count */}
       {search && (
         <div className="text-sm text-slate-400">
           نتائج البحث: <strong className="text-white">{filtered.length}</strong> مستند
@@ -455,7 +453,6 @@ export default function Documents() {
               <table className="w-full">
                 <thead>
                   <tr className="table-header">
-                    {/* أعمدة قابلة للترتيب */}
                     <th
                       className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors select-none"
                       onClick={() => toggleSort('name')}
@@ -515,18 +512,22 @@ export default function Documents() {
                               <span className="text-slate-600 text-xs">لا يوجد</span>
                             ) : (
                               <>
-                                {attachments.map((att, i) => (
-                                  <a
-                                    key={i}
-                                    href={att.fileUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    title={att.fileName || `ملف ${i+1}`}
-                                    className="text-xl hover:scale-110 transition-transform"
-                                  >
-                                    {getFileIcon(att.fileName)}
-                                  </a>
-                                ))}
+                                {attachments.map((att, i) => {
+                                  const isPDF = att.fileName?.toLowerCase().endsWith('.pdf')
+                                  return (
+                                    <a
+                                      key={i}
+                                      href={att.fileUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      title={att.fileName || `ملف ${i+1}`}
+                                      download={isPDF ? att.fileName : undefined}
+                                      className="text-xl hover:scale-110 transition-transform"
+                                    >
+                                      {getFileIcon(att.fileName)}
+                                    </a>
+                                  )
+                                })}
                                 <span className="text-xs text-slate-500">
                                   ({attachments.length})
                                 </span>
