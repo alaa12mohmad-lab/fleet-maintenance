@@ -36,8 +36,17 @@ async function uploadToCloudinary(file) {
 function fixFileUrl(url, fileName) {
   if (!url) return url
   const isPDF = fileName?.toLowerCase().endsWith('.pdf')
-  if (isPDF && url.includes('/image/upload/')) {
-    return url.replace('/image/upload/', '/raw/upload/')
+  if (isPDF) {
+    if (url.includes('/image/upload/')) {
+      return url.replace('/image/upload/', '/image/upload/fl_attachment/')
+    }
+    if (url.includes('/raw/upload/')) {
+      return url.replace('/raw/upload/', '/raw/upload/fl_attachment/')
+    }
+    if (url.includes('/auto/upload/')) {
+      return url.replace('/auto/upload/', '/auto/upload/fl_attachment/')
+    }
+    return url.replace('/upload/', '/upload/fl_attachment/')
   }
   return url
 }
