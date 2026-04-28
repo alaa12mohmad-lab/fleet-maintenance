@@ -17,14 +17,12 @@ const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
 
 async function uploadToCloudinary(file) {
-  const isPDF = file.type === 'application/pdf'
-  const resourceType = isPDF ? 'raw' : 'image'
   const formData = new FormData()
   formData.append('file', file)
   formData.append('upload_preset', UPLOAD_PRESET)
   formData.append('folder', 'fleet_documents')
   const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`,
+    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
     { method: 'POST', body: formData }
   )
   if (!res.ok) throw new Error('فشل رفع الملف')
@@ -32,28 +30,19 @@ async function uploadToCloudinary(file) {
   return { fileUrl: data.secure_url, fileName: file.name, fileType: file.type }
 }
 
-// إصلاح روابط PDF القديمة التي رُفعت بمسار خاطئ
-function fixFileUrl(url, fileName) {
+// فتح PDF عبر Google Docs Viewer
+function getViewUrl(url, fileName) {
   if (!url) return url
   const isPDF = fileName?.toLowerCase().endsWith('.pdf')
   if (isPDF) {
-    if (url.includes('/image/upload/')) {
-      return url.replace('/image/upload/', '/image/upload/fl_attachment/')
-    }
-    if (url.includes('/raw/upload/')) {
-      return url.replace('/raw/upload/', '/raw/upload/fl_attachment/')
-    }
-    if (url.includes('/auto/upload/')) {
-      return url.replace('/auto/upload/', '/auto/upload/fl_attachment/')
-    }
-    return url.replace('/upload/', '/upload/fl_attachment/')
+    return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`
   }
   return url
 }
 
 function getFileIcon(fileName) {
   if (!fileName) return '📎'
-  if (fileName.toLowerCase().includes('.pdf')) return '📄'
+  if (fileName.toLowerCase().endsWith('.pdf')) return '📄'
   if (/\.(jpg|jpeg|png|webp|gif)$/i.test(fileName)) return '🖼️'
   return '📎'
 }
@@ -211,15 +200,13 @@ function EditDocModal({ isOpen, onClose, doc, allEquipment, allVehicles }) {
               <label className="label">الملفات الحالية ({existingFiles.length})</label>
               <div className="space-y-2">
                 {existingFiles.map((att, i) => {
-                  const isPDF = att.fileName?.toLowerCase().endsWith('.pdf')
-                  const url = fixFileUrl(att.fileUrl, att.fileName)
+                  const viewUrl = getViewUrl(att.fileUrl, att.fileName)
                   return (
                     <div key={i} className="flex items-center justify-between p-2.5 bg-slate-900 rounded-lg">
                       <a
-                        href={url}
+                        href={viewUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        download={isPDF ? att.fileName : undefined}
                         className="flex items-center gap-2 text-sm text-primary-400 hover:text-primary-300 min-w-0 flex-1"
                       >
                         <span className="text-base flex-shrink-0">{getFileIcon(att.fileName)}</span>
@@ -506,16 +493,14 @@ export default function Documents() {
                             ) : (
                               <>
                                 {attachments.map((att, i) => {
-                                  const isPDF = att.fileName?.toLowerCase().endsWith('.pdf')
-                                  const url = fixFileUrl(att.fileUrl, att.fileName)
+                                  const viewUrl = getViewUrl(att.fileUrl, att.fileName)
                                   return (
                                     <a
                                       key={i}
-                                      href={url}
+                                      href={viewUrl}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       title={att.fileName || `ملف ${i+1}`}
-                                      download={isPDF ? att.fileName : undefined}
                                       className="text-xl hover:scale-110 transition-transform"
                                     >
                                       {getFileIcon(att.fileName)}
