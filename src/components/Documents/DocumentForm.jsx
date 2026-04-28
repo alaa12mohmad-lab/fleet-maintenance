@@ -4,7 +4,7 @@ import { Modal } from '../Common'
 import { addDocument } from '../../firebase/firestore'
 import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
-import { Upload, FileText } from 'lucide-react'
+import { Upload, FileText, X } from 'lucide-react'
 
 const EQUIPMENT_DOC_TYPES = ['رخصة سير', 'تأمين', 'فحص دوري', 'استمارة', 'عقد', 'أخرى']
 const EMPLOYEE_DOC_TYPES  = ['إقامة', 'تأمين طبي', 'رخصة قيادة', 'شهادة', 'فحص طبي', 'أخرى']
@@ -13,33 +13,33 @@ const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
 
 async function uploadToCloudinary(file) {
-  const isPDF = file.type === 'application/pdf'
-  const resourceType = isPDF ? 'raw' : 'image'
-
   const formData = new FormData()
   formData.append('file', file)
   formData.append('upload_preset', UPLOAD_PRESET)
   formData.append('folder', 'fleet_documents')
 
   const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`,
+    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
     { method: 'POST', body: formData }
   )
   if (!res.ok) throw new Error('فشل رفع الملف')
   const data = await res.json()
+  return { fileUrl: data.secure_url, fileName: file.name, fileType: file.type }
+}
 
-  const fileUrl = isPDF
-    ? data.secure_url
-    : data.secure_url
-
-  return { fileUrl, fileName: file.name, fileType: file.type }
+function getFileIcon(fileName) {
+  if (!fileName) return '📎'
+  if (fileName.toLowerCase().endsWith('.pdf')) return '📄'
+  if (/\.(jpg|jpeg|png|webp|gif)$/i.test(fileName)) return '🖼️'
+  return '📎'
 }
 
 export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVehicles = [] }) {
   const { currentUser } = useAuth()
-  const [loading, setLoading] = useState(false)
-  const [file, setFile]       = useState(null)
-  const [form, setForm]       = useState({
+  const [loading, setLoading]   = useState(false)
+  const [files, setFiles]       = useState([])
+  const [uploadProgress, setUploadProgress] = useState('')
+  const [form, setForm] = useState({
     name: '', docType: '', category: 'equipment',
     linkedId: '', linkedName: '', linkedType: '',
     issueDate: '', expiryDate: '', notes: '',
@@ -47,9 +47,10 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setForm(prev => ({ ...prev, [name]: value }))
     if (name === 'category') {
       setForm(prev => ({ ...prev, [name]: value, linkedId: '', linkedName: '', linkedType: '', docType: '' }))
+    } else {
+      setForm(prev => ({ ...prev, [name]: value }))
     }
   }
 
@@ -65,26 +66,46 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
     if (found) setForm(prev => ({ ...prev, linkedId: id, linkedName: found.name, linkedType: type }))
   }
 
+  const handleFilesChange = (e) => {
+    const selected = Array.from(e.target.files)
+    setFiles(prev => {
+      const existing = prev.map(f => f.name)
+      return [...prev, ...selected.filter(f => !existing.includes(f.name))]
+    })
+    e.target.value = ''
+  }
+
+  const removeFile = (index) => setFiles(prev => prev.filter((_, i) => i !== index))
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.name) return toast.error('اسم المستند مطلوب')
     setLoading(true)
     try {
-      let fileUrl = '', fileName = ''
-      if (file) {
-        const result = await uploadToCloudinary(file)
-        fileUrl  = result.fileUrl
-        fileName = result.fileName
+      const uploadedFiles = []
+      for (let i = 0; i < files.length; i++) {
+        setUploadProgress(`جاري رفع الملف ${i + 1} من ${files.length}...`)
+        const result = await uploadToCloudinary(files[i])
+        uploadedFiles.push(result)
       }
-      await addDocument({ ...form, fileUrl, fileName }, currentUser.uid)
+      setUploadProgress('')
+
+      await addDocument({
+        ...form,
+        fileUrl:     uploadedFiles[0]?.fileUrl  || '',
+        fileName:    uploadedFiles[0]?.fileName || '',
+        attachments: uploadedFiles,
+      }, currentUser.uid)
+
       toast.success('تم إضافة المستند بنجاح')
       setForm({ name: '', docType: '', category: 'equipment', linkedId: '', linkedName: '', linkedType: '', issueDate: '', expiryDate: '', notes: '' })
-      setFile(null)
+      setFiles([])
       onClose()
     } catch (err) {
       toast.error('حدث خطأ: ' + err.message)
     } finally {
       setLoading(false)
+      setUploadProgress('')
     }
   }
 
@@ -96,7 +117,8 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
         <div className="grid grid-cols-2 gap-4">
           <div className="col-span-2">
             <label className="label">اسم المستند *</label>
-            <input name="name" value={form.name} onChange={handleChange} className="input-field" placeholder="اسم المستند" required />
+            <input name="name" value={form.name} onChange={handleChange}
+              className="input-field" placeholder="اسم المستند" required />
           </div>
           <div>
             <label className="label">تصنيف المستند</label>
@@ -136,16 +158,36 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
           </div>
         </div>
 
+        {/* رفع ملفات متعددة */}
         <div>
-          <label className="label">الملف المرفق (PDF أو صورة)</label>
+          <label className="label">الملفات المرفقة (يمكن رفع أكثر من ملف)</label>
           <label className="flex items-center gap-3 p-3 border-2 border-dashed border-slate-600 rounded-xl cursor-pointer hover:border-primary-500 transition-colors">
-            <Upload className="w-5 h-5 text-slate-400" />
-            <span className="text-sm text-slate-400">
-              {file ? file.name : 'اضغط لرفع ملف'}
-            </span>
+            <Upload className="w-5 h-5 text-slate-400 flex-shrink-0" />
+            <span className="text-sm text-slate-400">اضغط لإضافة ملفات (PDF، صور)</span>
             <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp"
-              onChange={(e) => setFile(e.target.files[0])} />
+              multiple onChange={handleFilesChange} />
           </label>
+
+          {files.length > 0 && (
+            <div className="mt-2 space-y-2">
+              {files.map((file, i) => (
+                <div key={i} className="flex items-center justify-between p-2.5 bg-slate-900 rounded-lg">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="text-lg flex-shrink-0">{getFileIcon(file.name)}</span>
+                    <span className="text-sm text-slate-300 truncate">{file.name}</span>
+                    <span className="text-xs text-slate-500 flex-shrink-0">
+                      ({(file.size / 1024).toFixed(0)} KB)
+                    </span>
+                  </div>
+                  <button type="button" onClick={() => removeFile(i)}
+                    className="text-red-400 hover:text-red-300 p-1 flex-shrink-0 mr-2">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              <div className="text-xs text-slate-500 text-center">{files.length} ملف مختار</div>
+            </div>
+          )}
         </div>
 
         <div>
@@ -154,11 +196,17 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
             className="input-field h-16 resize-none" placeholder="ملاحظات..." />
         </div>
 
+        {uploadProgress && (
+          <div className="p-3 bg-primary-900/30 border border-primary-700/40 rounded-lg text-sm text-primary-300 text-center">
+            ⏳ {uploadProgress}
+          </div>
+        )}
+
         <div className="flex gap-3 pt-2">
           <button type="button" onClick={onClose} className="btn-secondary flex-1">إلغاء</button>
           <button type="submit" disabled={loading} className="btn-primary flex-1 justify-center">
             <FileText className="w-4 h-4" />
-            {loading ? 'جاري الرفع...' : 'حفظ المستند'}
+            {loading ? (uploadProgress || 'جاري الحفظ...') : 'حفظ المستند'}
           </button>
         </div>
       </form>
