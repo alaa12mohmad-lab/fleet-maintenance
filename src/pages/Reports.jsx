@@ -140,6 +140,7 @@ function PDFTemplate({ equipment, vehicles, logs, documents, year, type }) {
                     <tr key={item.id} style={{ background: i%2===0?'#f8fafc':'#fff', borderBottom: '1px solid #e2e8f0' }}>
                       <td style={{ padding: '7px 5px', fontWeight: '600' }}>{item.name}</td>
                       <td style={{ padding: '7px 5px', color: '#64748b' }}>{item.code||'—'}</td>
+                      <td style={{ padding: '7px 5px', color: '#1e40af', fontWeight: '700' }}>{item.plateNumber||'—'}</td>
                       <td style={{ padding: '7px 5px', color: '#1e40af', fontWeight: '700' }}>
                         {plate !== '—' ? (
                           <span style={{
