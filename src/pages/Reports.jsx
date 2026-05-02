@@ -111,7 +111,7 @@ function PDFTemplate({ equipment, vehicles, logs, documents, year, type }) {
           </div>
         )}
 
-        {/* Equipment / Oil Table */}
+        {/* Equipment / Oil Table — مع رقم اللوحة */}
         {(type === 'summary' || type === 'oil') && (
           <div style={{ marginBottom: '28px' }}>
             <div style={{
@@ -120,11 +120,11 @@ function PDFTemplate({ equipment, vehicles, logs, documents, year, type }) {
             }}>
               🚛 حالة تغيير الزيت — المعدات والسيارات
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9px' }}>
               <thead>
                 <tr style={{ background: '#1e40af', color: '#fff' }}>
-                  {['الاسم','الكود','السائق','العداد الحالي','آخر تغيير','المتبقي','الحالة'].map(h => (
-                    <th key={h} style={{ padding: '8px 6px', textAlign: 'right', fontWeight: '700' }}>{h}</th>
+                  {['الاسم','الكود','رقم اللوحة','السائق','العداد الحالي','آخر تغيير','المتبقي','الحالة'].map(h => (
+                    <th key={h} style={{ padding: '8px 5px', textAlign: 'right', fontWeight: '700' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -135,22 +135,33 @@ function PDFTemplate({ equipment, vehicles, logs, documents, year, type }) {
                   const labels = { overdue: 'متجاوز', warning: 'قريب', ok: 'جيد', unknown: 'غير محدد' }
                   const colors = { overdue: '#dc2626', warning: '#d97706', ok: '#16a34a', unknown: '#64748b' }
                   const bgs    = { overdue: '#fee2e2', warning: '#fef9c3', ok: '#dcfce7', unknown: '#f1f5f9' }
+                  const plate  = item.plateNumber || item.plate || item.licensePlate || '—'
                   return (
                     <tr key={item.id} style={{ background: i%2===0?'#f8fafc':'#fff', borderBottom: '1px solid #e2e8f0' }}>
-                      <td style={{ padding: '7px 6px', fontWeight: '600' }}>{item.name}</td>
-                      <td style={{ padding: '7px 6px', color: '#64748b' }}>{item.code||'—'}</td>
-                      <td style={{ padding: '7px 6px' }}>{item.driver||'—'}</td>
-                      <td style={{ padding: '7px 6px' }}>{(item.currentReading||0).toLocaleString()} {unit}</td>
-                      <td style={{ padding: '7px 6px' }}>{(item.lastOilChangeReading||0).toLocaleString()} {unit}</td>
-                      <td style={{ padding: '7px 6px', fontWeight: '600', color: s.remaining < 0 ? '#dc2626' : '#16a34a' }}>
+                      <td style={{ padding: '7px 5px', fontWeight: '600' }}>{item.name}</td>
+                      <td style={{ padding: '7px 5px', color: '#64748b' }}>{item.code||'—'}</td>
+                      <td style={{ padding: '7px 5px', color: '#1e40af', fontWeight: '700' }}>
+                        {plate !== '—' ? (
+                          <span style={{
+                            background: '#dbeafe',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '9px',
+                          }}>{plate}</span>
+                        ) : '—'}
+                      </td>
+                      <td style={{ padding: '7px 5px' }}>{item.driver||'—'}</td>
+                      <td style={{ padding: '7px 5px' }}>{(item.currentReading||0).toLocaleString()} {unit}</td>
+                      <td style={{ padding: '7px 5px' }}>{(item.lastOilChangeReading||0).toLocaleString()} {unit}</td>
+                      <td style={{ padding: '7px 5px', fontWeight: '600', color: s.remaining < 0 ? '#dc2626' : '#16a34a' }}>
                         {s.remaining !== null ? `${s.remaining.toLocaleString()} ${unit}` : '—'}
                       </td>
-                      <td style={{ padding: '7px 6px' }}>
+                      <td style={{ padding: '7px 5px' }}>
                         <span style={{
                           background: bgs[s.status]||'#f1f5f9',
                           color: colors[s.status]||'#64748b',
-                          padding: '2px 8px', borderRadius: '20px',
-                          fontWeight: '700', fontSize: '9px',
+                          padding: '2px 7px', borderRadius: '20px',
+                          fontWeight: '700', fontSize: '8px',
                         }}>
                           {labels[s.status]||'—'}
                         </span>
@@ -474,9 +485,13 @@ export default function Reports() {
                 .map(item => {
                   const s    = calculateOilStatus(item.lastOilChangeReading, item.oilChangeInterval, item.currentReading)
                   const unit = item.meterType === 'hours' ? 'ساعة' : 'كم'
+                  const plate = item.plateNumber || item.plate || item.licensePlate || ''
                   return (
                     <div key={item.id} className="flex justify-between items-center p-2 bg-red-900/20 rounded-lg">
-                      <span className="text-sm font-semibold text-white">{item.name}</span>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-semibold text-white">{item.name}</span>
+                        {plate && <span className="text-xs text-slate-400">{plate}</span>}
+                      </div>
                       <span className="badge-red">تجاوز {Math.abs(s.remaining).toLocaleString()} {unit}</span>
                     </div>
                   )
