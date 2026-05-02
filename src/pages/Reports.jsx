@@ -135,22 +135,13 @@ function PDFTemplate({ equipment, vehicles, logs, documents, year, type }) {
                   const labels = { overdue: 'متجاوز', warning: 'قريب', ok: 'جيد', unknown: 'غير محدد' }
                   const colors = { overdue: '#dc2626', warning: '#d97706', ok: '#16a34a', unknown: '#64748b' }
                   const bgs    = { overdue: '#fee2e2', warning: '#fef9c3', ok: '#dcfce7', unknown: '#f1f5f9' }
-                  const plate  = item.plateNumber || item.plate || item.licensePlate || '—'
+                  
                   return (
                     <tr key={item.id} style={{ background: i%2===0?'#f8fafc':'#fff', borderBottom: '1px solid #e2e8f0' }}>
                       <td style={{ padding: '7px 5px', fontWeight: '600' }}>{item.name}</td>
                       <td style={{ padding: '7px 5px', color: '#64748b' }}>{item.code||'—'}</td>
                       <td style={{ padding: '7px 5px', color: '#1e40af', fontWeight: '700' }}>{item.plateNumber||'—'}</td>
-                      <td style={{ padding: '7px 5px', color: '#1e40af', fontWeight: '700' }}>
-                        {plate !== '—' ? (
-                          <span style={{
-                            background: '#dbeafe',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            fontSize: '9px',
-                          }}>{plate}</span>
-                        ) : '—'}
-                      </td>
+                     
                       <td style={{ padding: '7px 5px' }}>{item.driver||'—'}</td>
                       <td style={{ padding: '7px 5px' }}>{(item.currentReading||0).toLocaleString()} {unit}</td>
                       <td style={{ padding: '7px 5px' }}>{(item.lastOilChangeReading||0).toLocaleString()} {unit}</td>
