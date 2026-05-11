@@ -33,6 +33,9 @@ async function uploadToCloudinary(file) {
 // فتح PDF عبر Google Docs Viewer
 function getViewUrl(url, fileName) {
   if (!url) return url
+  // Supabase URLs تفتح مباشرة
+  if (url.includes('supabase.co')) return url
+  // Cloudinary PDFs عبر Google Docs Viewer
   const isPDF = fileName?.toLowerCase().endsWith('.pdf')
   if (isPDF) {
     return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`
