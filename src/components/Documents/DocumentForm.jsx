@@ -23,7 +23,10 @@ async function uploadFile(file) {
 
   if (isPDF) {
     // رفع PDF عبر Supabase
-    const fileName = `${Date.now()}_${file.name.replace(/\s/g, '_')}`
+    const fileName = `${Date.now()}_${file.name
+  .replace(/\s/g, '_')
+  .replace(/[^\w._-]/g, '')
+  .toLowerCase()}`
     const { data, error } = await supabase.storage
       .from('fleet-documents')
       .upload(fileName, file, { contentType: 'application/pdf', upsert: false })
