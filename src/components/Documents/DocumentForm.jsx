@@ -5,6 +5,7 @@ import { addDocument } from '../../firebase/firestore'
 import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
 import { Upload, FileText, X } from 'lucide-react'
+import { createClient } from '@supabase/supabase-js'
 
 const EQUIPMENT_DOC_TYPES = ['رخصة سير', 'تأمين', 'فحص دوري', 'استمارة', 'عقد', 'أخرى']
 const EMPLOYEE_DOC_TYPES  = ['إقامة', 'تأمين طبي', 'رخصة قيادة', 'شهادة', 'فحص طبي', 'أخرى']
@@ -12,19 +13,43 @@ const EMPLOYEE_DOC_TYPES  = ['إقامة', 'تأمين طبي', 'رخصة قيا
 const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
 
-async function uploadToCloudinary(file) {
-  const formData = new FormData()
-  formData.append('file', file)
-  formData.append('upload_preset', UPLOAD_PRESET)
-  formData.append('folder', 'fleet_documents')
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+)
 
-  const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
-    { method: 'POST', body: formData }
-  )
-  if (!res.ok) throw new Error('فشل رفع الملف')
-  const data = await res.json()
-  return { fileUrl: data.secure_url, fileName: file.name, fileType: file.type }
+async function uploadFile(file) {
+  const isPDF = file.type === 'application/pdf'
+
+  if (isPDF) {
+    // رفع PDF عبر Supabase
+    const fileName = `${Date.now()}_${file.name.replace(/\s/g, '_')}`
+    const { data, error } = await supabase.storage
+      .from('fleet-documents')
+      .upload(fileName, file, { contentType: 'application/pdf', upsert: false })
+
+    if (error) throw new Error('فشل رفع PDF: ' + error.message)
+
+    const { data: urlData } = supabase.storage
+      .from('fleet-documents')
+      .getPublicUrl(fileName)
+
+    return { fileUrl: urlData.publicUrl, fileName: file.name, fileType: file.type }
+  } else {
+    // رفع الصور عبر Cloudinary
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('upload_preset', UPLOAD_PRESET)
+    formData.append('folder', 'fleet_documents')
+
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+      { method: 'POST', body: formData }
+    )
+    if (!res.ok) throw new Error('فشل رفع الصورة')
+    const data = await res.json()
+    return { fileUrl: data.secure_url, fileName: file.name, fileType: file.type }
+  }
 }
 
 function getFileIcon(fileName) {
@@ -85,7 +110,7 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
       const uploadedFiles = []
       for (let i = 0; i < files.length; i++) {
         setUploadProgress(`جاري رفع الملف ${i + 1} من ${files.length}...`)
-        const result = await uploadToCloudinary(files[i])
+        const result = await uploadFile(files[i])
         uploadedFiles.push(result)
       }
       setUploadProgress('')
@@ -136,7 +161,7 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
           </div>
           {form.category === 'equipment' && (
             <div className="col-span-2">
-              <label className="label">مرتبط بـ (معدة / سيارة)</label>
+              <label className="label">مرتبط بـ</label>
               <select onChange={handleLinkedChange} className="input-field" defaultValue="">
                 <option value="">اختر المعدة أو السيارة...</option>
                 <optgroup label="المعدات">
@@ -158,16 +183,14 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
           </div>
         </div>
 
-        {/* رفع ملفات متعددة */}
         <div>
-          <label className="label">الملفات المرفقة (يمكن رفع أكثر من ملف)</label>
+          <label className="label">الملفات المرفقة</label>
           <label className="flex items-center gap-3 p-3 border-2 border-dashed border-slate-600 rounded-xl cursor-pointer hover:border-primary-500 transition-colors">
             <Upload className="w-5 h-5 text-slate-400 flex-shrink-0" />
             <span className="text-sm text-slate-400">اضغط لإضافة ملفات (PDF، صور)</span>
             <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp"
               multiple onChange={handleFilesChange} />
           </label>
-
           {files.length > 0 && (
             <div className="mt-2 space-y-2">
               {files.map((file, i) => (
@@ -175,9 +198,7 @@ export default function DocumentForm({ isOpen, onClose, allEquipment = [], allVe
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <span className="text-lg flex-shrink-0">{getFileIcon(file.name)}</span>
                     <span className="text-sm text-slate-300 truncate">{file.name}</span>
-                    <span className="text-xs text-slate-500 flex-shrink-0">
-                      ({(file.size / 1024).toFixed(0)} KB)
-                    </span>
+                    <span className="text-xs text-slate-500 flex-shrink-0">({(file.size/1024).toFixed(0)} KB)</span>
                   </div>
                   <button type="button" onClick={() => removeFile(i)}
                     className="text-red-400 hover:text-red-300 p-1 flex-shrink-0 mr-2">
