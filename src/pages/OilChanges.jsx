@@ -33,7 +33,8 @@ function exportOilPDF(allItems, oilLogs, itemMap) {
     return `
       <tr>
         <td>${item._type==='vehicle'?'🚗':'⚙️'} ${item.name}</td>
-        <td>${item.code || item.plateNumber || '—'}</td>
+        <td>${item.code || '—'}</td>
+        <td style="color:#fbbf24;font-weight:600">${item.plateNumber || '—'}</td>
         <td>${item._type==='vehicle'?'سيارة':'معدة'}</td>
         <td>${(item.lastOilChangeReading||0).toLocaleString('ar-SA')} ${unit}</td>
         <td>${(item.currentReading||0).toLocaleString('ar-SA')} ${unit}</td>
@@ -54,7 +55,8 @@ function exportOilPDF(allItems, oilLogs, itemMap) {
     return `
       <tr>
         <td>${item?._type==='vehicle'?'🚗':'⚙️'} ${item?.name || log.equipmentId}</td>
-        <td>${item?.code || item?.plateNumber || '—'}</td>
+        <td>${item?.code || '—'}</td>
+        <td style="color:#fbbf24;font-weight:600">${item?.plateNumber || '—'}</td>
         <td>${item?._type==='vehicle'?'سيارة':'معدة'}</td>
         <td>${log.date || '—'}</td>
         <td style="font-weight:600">${Number(log.reading).toLocaleString('ar-SA')} ${unit}</td>
@@ -217,6 +219,7 @@ function exportOilPDF(allItems, oilLogs, itemMap) {
         <tr>
           <th>الاسم</th>
           <th>الكود</th>
+          <th>رقم اللوحة</th>
           <th>النوع</th>
           <th>آخر تغيير</th>
           <th>القراءة الحالية</th>
@@ -238,6 +241,7 @@ function exportOilPDF(allItems, oilLogs, itemMap) {
         <tr>
           <th>المعدة / السيارة</th>
           <th>الكود</th>
+          <th>رقم اللوحة</th>
           <th>النوع</th>
           <th>تاريخ التغيير</th>
           <th>قراءة العداد</th>
