@@ -5,140 +5,261 @@ import { subscribeToCollection } from '../firebase/firestore'
 import { OilChangeModal, MeterReadingModal } from '../components/Equipment/MeterReadingForm'
 import { OilStatusBadge, ProgressBar, SearchInput, EmptyState, LoadingSpinner } from '../components/Common'
 import { calculateOilStatus } from '../utils/calculations'
-import {
-  Droplets, Gauge, Clock, CalendarDays,
-  ChevronDown, ChevronUp, FileText, X
-} from 'lucide-react'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { Droplets, Gauge, Clock, CalendarDays, ChevronDown, ChevronUp, FileText, X } from 'lucide-react'
 
-// ─── PDF Export ───────────────────────────────────────────────
-function exportOilPDF(allItems, oilLogs, logsByItem) {
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-  doc.setFont('helvetica')
-  const pageW = doc.internal.pageSize.getWidth()
-  const now = new Date().toLocaleDateString('en-GB')
-
-  // غلاف
-  doc.setFillColor(15, 23, 42)
-  doc.rect(0, 0, pageW, 40, 'F')
-  doc.setTextColor(251, 191, 36)
-  doc.setFontSize(20)
-  doc.text('Oil Change Report', pageW / 2, 18, { align: 'center' })
-  doc.setTextColor(148, 163, 184)
-  doc.setFontSize(10)
-  doc.text(`Date: ${now}   |   Total: ${allItems.length} units`, pageW / 2, 28, { align: 'center' })
-
-  // إحصائيات
+// ─── تصدير PDF عربي عبر Print ────────────────────────────────
+function exportOilPDF(allItems, oilLogs, itemMap) {
+  const now = new Date().toLocaleDateString('ar-SA', { year:'numeric', month:'long', day:'numeric' })
   const overdue = allItems.filter(i => calculateOilStatus(i.lastOilChangeReading, i.oilChangeInterval, i.currentReading).status === 'overdue').length
   const warning = allItems.filter(i => calculateOilStatus(i.lastOilChangeReading, i.oilChangeInterval, i.currentReading).status === 'warning').length
   const ok      = allItems.filter(i => calculateOilStatus(i.lastOilChangeReading, i.oilChangeInterval, i.currentReading).status === 'ok').length
   const unknown = allItems.length - overdue - warning - ok
 
-  doc.setFillColor(30, 41, 59)
-  doc.rect(10, 43, pageW - 20, 14, 'F')
-  doc.setFontSize(9)
-  doc.setTextColor(239, 68, 68);  doc.text(`Overdue: ${overdue}`, 20, 51)
-  doc.setTextColor(245, 158, 11); doc.text(`Warning: ${warning}`, 70, 51)
-  doc.setTextColor(34, 197, 94);  doc.text(`OK: ${ok}`, 120, 51)
-  doc.setTextColor(148, 163, 184);doc.text(`No Data: ${unknown}`, 155, 51)
-
-  // جدول ملخص الحالة
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(12)
-  doc.text('Equipment Oil Status', pageW - 14, 66, { align: 'right' })
+  const statusLabel = s =>
+    s === 'overdue' ? '<span style="color:#ef4444;font-weight:700">⛔ متجاوز</span>' :
+    s === 'warning' ? '<span style="color:#f59e0b;font-weight:700">⚠️ قريب</span>'   :
+    s === 'ok'      ? '<span style="color:#22c55e;font-weight:700">✅ جيد</span>'    :
+    '<span style="color:#94a3b8">— غير محدد</span>'
 
   const summaryRows = allItems.map(item => {
-    const unit   = item.meterType === 'hours' ? 'hr' : 'km'
+    const unit   = item.meterType === 'hours' ? 'ساعة' : 'كم'
     const status = calculateOilStatus(item.lastOilChangeReading, item.oilChangeInterval, item.currentReading)
     const nextAt = item.oilChangeInterval
-      ? (Number(item.lastOilChangeReading || 0) + Number(item.oilChangeInterval)).toLocaleString() + ' ' + unit
+      ? (Number(item.lastOilChangeReading||0) + Number(item.oilChangeInterval)).toLocaleString('ar-SA') + ' ' + unit
       : '—'
-    const statusLabel =
-      status.status === 'overdue' ? 'OVERDUE' :
-      status.status === 'warning' ? 'WARNING' :
-      status.status === 'ok'      ? 'OK' : 'N/A'
-    return [
-      item.name,
-      item.code || item.plateNumber || '—',
-      item._type === 'vehicle' ? 'Vehicle' : 'Equipment',
-      (item.lastOilChangeReading || 0).toLocaleString() + ' ' + unit,
-      (item.currentReading || 0).toLocaleString() + ' ' + unit,
-      status.remaining != null ? status.remaining.toLocaleString() + ' ' + unit : '—',
-      nextAt,
-      item.lastOilChangeDate || '—',
-      statusLabel,
-    ]
-  })
-
-  autoTable(doc, {
-    startY: 69,
-    head: [['Name', 'Code', 'Type', 'Last Change', 'Current', 'Remaining', 'Next At', 'Last Date', 'Status']],
-    body: summaryRows,
-    styles: { fontSize: 8, cellPadding: 2.5, textColor: [226, 232, 240], fillColor: [30, 41, 59] },
-    headStyles: { fillColor: [180, 83, 9], textColor: [255, 255, 255], fontStyle: 'bold' },
-    alternateRowStyles: { fillColor: [15, 23, 42] },
-    didParseCell(data) {
-      if (data.column.index === 8 && data.section === 'body') {
-        const v = data.cell.raw
-        data.cell.styles.fontStyle = 'bold'
-        data.cell.styles.textColor =
-          v === 'OVERDUE' ? [239, 68, 68] :
-          v === 'WARNING' ? [245, 158, 11] :
-          v === 'OK'      ? [34, 197, 94]  :
-          [100, 116, 139]
-      }
-    },
-    margin: { left: 10, right: 10 },
-  })
-
-  // صفحة جديدة للتاريخ
-  doc.addPage()
-  doc.setFillColor(15, 23, 42)
-  doc.rect(0, 0, pageW, 20, 'F')
-  doc.setTextColor(251, 191, 36)
-  doc.setFontSize(14)
-  doc.text('Oil Change History', pageW / 2, 13, { align: 'center' })
+    const remaining = status.remaining != null
+      ? `<span style="color:${status.remaining<=0?'#ef4444':status.percentage<=20?'#f59e0b':'#22c55e'};font-weight:600">${status.remaining.toLocaleString('ar-SA')} ${unit}</span>`
+      : '—'
+    return `
+      <tr>
+        <td>${item._type==='vehicle'?'🚗':'⚙️'} ${item.name}</td>
+        <td>${item.code || item.plateNumber || '—'}</td>
+        <td>${item._type==='vehicle'?'سيارة':'معدة'}</td>
+        <td>${(item.lastOilChangeReading||0).toLocaleString('ar-SA')} ${unit}</td>
+        <td>${(item.currentReading||0).toLocaleString('ar-SA')} ${unit}</td>
+        <td>${remaining}</td>
+        <td style="color:#fbbf24;font-weight:600">${nextAt}</td>
+        <td>${item.lastOilChangeDate || '—'}</td>
+        <td>${statusLabel(status.status)}</td>
+      </tr>`
+  }).join('')
 
   const historyRows = oilLogs.map(log => {
-    const item = allItems.find(i => i.id === log.equipmentId)
-    const unit = item?.meterType === 'hours' ? 'hr' : 'km'
+    const item = itemMap[log.equipmentId]
+    const unit = item?.meterType === 'hours' ? 'ساعة' : 'كم'
     const nextAt = item?.oilChangeInterval
-      ? (Number(log.reading) + Number(item.oilChangeInterval)).toLocaleString() + ' ' + unit
+      ? (Number(log.reading) + Number(item.oilChangeInterval)).toLocaleString('ar-SA') + ' ' + unit
       : '—'
-    return [
-      item?.name || log.equipmentId,
-      item?.code || item?.plateNumber || '—',
-      item?._type === 'vehicle' ? 'Vehicle' : 'Equipment',
-      log.date || '—',
-      Number(log.reading).toLocaleString() + ' ' + unit,
-      nextAt,
-      log.notes || '—',
-    ]
-  })
+    const status = item ? calculateOilStatus(item.lastOilChangeReading, item.oilChangeInterval, item.currentReading) : null
+    return `
+      <tr>
+        <td>${item?._type==='vehicle'?'🚗':'⚙️'} ${item?.name || log.equipmentId}</td>
+        <td>${item?.code || item?.plateNumber || '—'}</td>
+        <td>${item?._type==='vehicle'?'سيارة':'معدة'}</td>
+        <td>${log.date || '—'}</td>
+        <td style="font-weight:600">${Number(log.reading).toLocaleString('ar-SA')} ${unit}</td>
+        <td style="color:#fbbf24;font-weight:600">${nextAt}</td>
+        <td style="color:#94a3b8">${log.notes || '—'}</td>
+      </tr>`
+  }).join('')
 
-  autoTable(doc, {
-    startY: 24,
-    head: [['Equipment', 'Code', 'Type', 'Date', 'Reading at Change', 'Next Change At', 'Notes']],
-    body: historyRows.length ? historyRows : [['No records', '', '', '', '', '', '']],
-    styles: { fontSize: 8, cellPadding: 2.5, textColor: [226, 232, 240], fillColor: [30, 41, 59] },
-    headStyles: { fillColor: [180, 83, 9], textColor: [255, 255, 255], fontStyle: 'bold' },
-    alternateRowStyles: { fillColor: [15, 23, 42] },
-    margin: { left: 10, right: 10 },
-  })
+  const html = `
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8"/>
+  <title>تقرير تغيير الزيت</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+      background: #fff;
+      color: #1e293b;
+      direction: rtl;
+      font-size: 13px;
+    }
 
-  // footer
-  const pageCount = doc.internal.getNumberOfPages()
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i)
-    doc.setFontSize(8)
-    doc.setTextColor(100, 116, 139)
-    doc.text(`Page ${i} of ${pageCount}`, pageW / 2, 200, { align: 'center' })
-    doc.text('Fleet Management System', 14, 200)
-    doc.text(now, pageW - 14, 200, { align: 'right' })
-  }
+    /* ── غلاف ── */
+    .cover {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #78350f 100%);
+      color: #fff;
+      padding: 40px 50px 30px;
+      margin-bottom: 30px;
+    }
+    .cover-title {
+      font-size: 32px;
+      font-weight: 800;
+      color: #fbbf24;
+      margin-bottom: 6px;
+      letter-spacing: -0.5px;
+    }
+    .cover-sub {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-bottom: 24px;
+    }
+    .stats-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .stat-box {
+      background: rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 14px 20px;
+      min-width: 110px;
+      text-align: center;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .stat-num { font-size: 28px; font-weight: 800; }
+    .stat-label { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    .stat-overdue .stat-num { color: #ef4444; }
+    .stat-warning .stat-num { color: #f59e0b; }
+    .stat-ok      .stat-num { color: #22c55e; }
+    .stat-unknown .stat-num { color: #64748b; }
+    .stat-total   .stat-num { color: #fbbf24; }
 
-  doc.save(`oil-report-${now.replace(/\//g, '-')}.pdf`)
+    /* ── أقسام ── */
+    .section { padding: 0 50px 30px; }
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 3px solid #f59e0b;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-title span { font-size: 20px; }
+
+    /* ── جدول ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    thead tr {
+      background: #1e293b;
+      color: #fff;
+    }
+    thead th {
+      padding: 10px 10px;
+      text-align: right;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid #e2e8f0; }
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    tbody tr:hover { background: #fef3c7; }
+    tbody td { padding: 9px 10px; vertical-align: middle; }
+
+    /* ── فاصل صفحة ── */
+    .page-break { page-break-before: always; }
+
+    /* ── footer ── */
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      color: #94a3b8;
+      padding: 20px 50px;
+      border-top: 1px solid #e2e8f0;
+      margin-top: 20px;
+    }
+
+    @media print {
+      body { font-size: 11px; }
+      .cover { margin-bottom: 20px; }
+      .section { padding: 0 20px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- غلاف -->
+  <div class="cover">
+    <div class="cover-title">🛢️ تقرير تغيير الزيت</div>
+    <div class="cover-sub">نظام إدارة الأسطول والمعدات &nbsp;·&nbsp; ${now}</div>
+    <div class="stats-row">
+      <div class="stat-box stat-total">
+        <div class="stat-num">${allItems.length}</div>
+        <div class="stat-label">إجمالي المعدات</div>
+      </div>
+      <div class="stat-box stat-overdue">
+        <div class="stat-num">${overdue}</div>
+        <div class="stat-label">⛔ متجاوز الموعد</div>
+      </div>
+      <div class="stat-box stat-warning">
+        <div class="stat-num">${warning}</div>
+        <div class="stat-label">⚠️ يقترب الموعد</div>
+      </div>
+      <div class="stat-box stat-ok">
+        <div class="stat-num">${ok}</div>
+        <div class="stat-label">✅ حالة جيدة</div>
+      </div>
+      <div class="stat-box stat-unknown">
+        <div class="stat-num">${unknown}</div>
+        <div class="stat-label">— غير محدد</div>
+      </div>
+      <div class="stat-box" style="min-width:130px">
+        <div class="stat-num" style="font-size:20px;color:#94a3b8">${oilLogs.length}</div>
+        <div class="stat-label">إجمالي السجلات</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ملخص حالة المعدات -->
+  <div class="section">
+    <div class="section-title"><span>📊</span> ملخص حالة الزيت لجميع المعدات</div>
+    <table>
+      <thead>
+        <tr>
+          <th>الاسم</th>
+          <th>الكود</th>
+          <th>النوع</th>
+          <th>آخر تغيير</th>
+          <th>القراءة الحالية</th>
+          <th>المتبقي</th>
+          <th>الموعد القادم</th>
+          <th>تاريخ آخر تغيير</th>
+          <th>الحالة</th>
+        </tr>
+      </thead>
+      <tbody>${summaryRows}</tbody>
+    </table>
+  </div>
+
+  <!-- سجل التغييرات -->
+  <div class="section page-break">
+    <div class="section-title"><span>📋</span> سجل جميع تغييرات الزيت</div>
+    <table>
+      <thead>
+        <tr>
+          <th>المعدة / السيارة</th>
+          <th>الكود</th>
+          <th>النوع</th>
+          <th>تاريخ التغيير</th>
+          <th>قراءة العداد</th>
+          <th>الموعد القادم</th>
+          <th>ملاحظات</th>
+        </tr>
+      </thead>
+      <tbody>${historyRows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px">لا توجد سجلات</td></tr>'}</tbody>
+    </table>
+  </div>
+
+  <div class="footer">
+    نظام إدارة الأسطول والمعدات &nbsp;·&nbsp; تم إنشاؤه بتاريخ ${now}
+  </div>
+
+  <script>window.onload = () => { window.print(); }</script>
+</body>
+</html>`
+
+  const win = window.open('', '_blank')
+  win.document.write(html)
+  win.document.close()
 }
 
 // ─── Component ────────────────────────────────────────────────
@@ -216,25 +337,20 @@ export default function OilChanges() {
           </div>
         </div>
         <button
-          onClick={() => exportOilPDF(allItemsBase, oilLogs, logsByItem)}
+          onClick={() => exportOilPDF(allItemsBase, oilLogs, itemMap)}
           className="btn-ghost text-sm flex items-center gap-2"
         >
-          <FileText className="w-4 h-4 text-amber-400" /> تصدير PDF
+          <FileText className="w-4 h-4 text-amber-400" /> طباعة / PDF
         </button>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2 bg-slate-900 p-1 rounded-xl w-fit">
-        {[['status', 'حالة الزيت'], ['history', 'سجل التغييرات']].map(([t, l]) => (
-          <button
-            key={t}
-            onClick={() => setActiveTab(t)}
+        {[['status','حالة الزيت'],['history','سجل التغييرات']].map(([t,l]) => (
+          <button key={t} onClick={() => setActiveTab(t)}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === t ? 'bg-primary-600 text-white' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            {l}
-          </button>
+              activeTab===t ? 'bg-primary-600 text-white' : 'text-slate-400 hover:text-white'
+            }`}>{l}</button>
         ))}
       </div>
 
@@ -244,31 +360,21 @@ export default function OilChanges() {
           {[['all','الكل'],['equipment','⚙️ معدات'],['vehicle','🚗 سيارات']].map(([v,l]) => (
             <button key={v} onClick={() => setFilterType(v)}
               className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
-                filterType === v ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
+                filterType===v ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
               }`}>{l}</button>
           ))}
         </div>
-
         <div className="flex gap-1 bg-slate-900 p-1 rounded-lg">
-          {[
-            ['all','الكل'],
-            ['overdue','⛔ متجاوز'],
-            ['warning','⚠️ قريب'],
-            ['ok','✅ جيد'],
-            ['unknown','— غير محدد'],
-          ].map(([v,l]) => (
+          {[['all','الكل'],['overdue','⛔ متجاوز'],['warning','⚠️ قريب'],['ok','✅ جيد'],['unknown','— غير محدد']].map(([v,l]) => (
             <button key={v} onClick={() => setFilterStatus(v)}
               className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
-                filterStatus === v ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-white'
+                filterStatus===v ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-white'
               }`}>{l}</button>
           ))}
         </div>
-
         {hasFilters && (
-          <button
-            onClick={() => { setFilterType('all'); setFilterStatus('all'); setSearch('') }}
-            className="flex items-center gap-1 text-xs text-slate-400 hover:text-red-400 transition-colors"
-          >
+          <button onClick={() => { setFilterType('all'); setFilterStatus('all'); setSearch('') }}
+            className="flex items-center gap-1 text-xs text-slate-400 hover:text-red-400 transition-colors">
             <X className="w-3 h-3" /> مسح الفلاتر
           </button>
         )}
@@ -279,7 +385,6 @@ export default function OilChanges() {
         <>
           <SearchInput value={search} onChange={setSearch} placeholder="بحث بالاسم أو الكود..." />
           <div className="text-xs text-slate-500 px-1">{filtered.length} من {allItemsBase.length} نتيجة</div>
-
           {filtered.length === 0 ? (
             <EmptyState icon={Droplets} title="لا توجد نتائج" message="جرّب تغيير الفلاتر" />
           ) : (
@@ -287,18 +392,17 @@ export default function OilChanges() {
               {filtered.map(item => {
                 const unit     = item.meterType === 'hours' ? 'ساعة' : 'كم'
                 const status   = calculateOilStatus(item.lastOilChangeReading, item.oilChangeInterval, item.currentReading)
-                const nextAt   = Number(item.lastOilChangeReading || 0) + Number(item.oilChangeInterval || 0)
+                const nextAt   = Number(item.lastOilChangeReading||0) + Number(item.oilChangeInterval||0)
                 const itemLogs = logsByItem[item.id] || []
                 const isOpen   = expanded[item.id]
-
                 return (
                   <div key={item.id} className={`card border-2 ${
-                    status.status === 'overdue' ? 'border-red-700/50' :
-                    status.status === 'warning' ? 'border-amber-600/40' : 'border-slate-700'
+                    status.status==='overdue' ? 'border-red-700/50' :
+                    status.status==='warning' ? 'border-amber-600/40' : 'border-slate-700'
                   }`}>
                     <div className="flex items-center justify-between flex-wrap gap-3">
                       <div className="flex items-center gap-3">
-                        <span className="text-xl">{item._type === 'vehicle' ? '🚗' : '⚙️'}</span>
+                        <span className="text-xl">{item._type==='vehicle'?'🚗':'⚙️'}</span>
                         <div>
                           <div className="font-bold text-white">{item.name}</div>
                           <div className="text-xs text-slate-500">{item.code || item.plateNumber}</div>
@@ -306,35 +410,33 @@ export default function OilChanges() {
                       </div>
                       <OilStatusBadge item={item} />
                     </div>
-
                     <div className="mt-3 grid grid-cols-3 gap-3 text-center text-xs">
                       <div className="bg-slate-900 p-2 rounded-lg">
                         <div className="text-slate-500 mb-0.5">آخر تغيير</div>
-                        <div className="text-white font-semibold">{(item.lastOilChangeReading || 0).toLocaleString()}</div>
+                        <div className="text-white font-semibold">{(item.lastOilChangeReading||0).toLocaleString()}</div>
                         <div className="text-slate-500">{unit}</div>
                       </div>
                       <div className="bg-slate-900 p-2 rounded-lg">
                         <div className="text-slate-500 mb-0.5">الحالية</div>
-                        <div className="text-white font-semibold">{(item.currentReading || 0).toLocaleString()}</div>
+                        <div className="text-white font-semibold">{(item.currentReading||0).toLocaleString()}</div>
                         <div className="text-slate-500">{unit}</div>
                       </div>
                       <div className="bg-slate-900 p-2 rounded-lg">
                         <div className="text-slate-500 mb-0.5">المتبقي</div>
                         <div className={`font-bold ${
-                          status.remaining <= 0 ? 'text-red-400' :
-                          status.percentage <= 20 ? 'text-amber-400' : 'text-emerald-400'
+                          status.remaining<=0 ? 'text-red-400' :
+                          status.percentage<=20 ? 'text-amber-400' : 'text-emerald-400'
                         }`}>
-                          {status.remaining != null ? status.remaining.toLocaleString() : '—'}
+                          {status.remaining!=null ? status.remaining.toLocaleString() : '—'}
                         </div>
                         <div className="text-slate-500">{unit}</div>
                       </div>
                     </div>
-
                     {item.oilChangeInterval > 0 && (
                       <div className="mt-2 flex items-center justify-between text-xs text-slate-400 px-1">
                         <span className="flex items-center gap-1">
                           <Gauge className="w-3 h-3" /> الموعد القادم:
-                          <span className={`font-bold mr-1 ${status.remaining <= 0 ? 'text-red-400' : 'text-amber-300'}`}>
+                          <span className={`font-bold mr-1 ${status.remaining<=0?'text-red-400':'text-amber-300'}`}>
                             {nextAt.toLocaleString()} {unit}
                           </span>
                         </span>
@@ -345,11 +447,9 @@ export default function OilChanges() {
                         )}
                       </div>
                     )}
-
                     {item.oilChangeInterval > 0 && (
                       <div className="mt-1"><ProgressBar percentage={status.percentage} status={status.status} /></div>
                     )}
-
                     <div className="mt-3 flex gap-2">
                       <button onClick={() => { setMeterTarget(item); setMeterItemType(item._type) }}
                         className="btn-ghost text-xs flex-1 justify-center py-1.5">
@@ -360,13 +460,10 @@ export default function OilChanges() {
                         <Droplets className="w-3.5 h-3.5" /> تسجيل تغيير زيت
                       </button>
                     </div>
-
                     {itemLogs.length > 0 && (
                       <div className="mt-2 border-t border-slate-700 pt-2">
-                        <button
-                          onClick={() => setExpanded(p => ({ ...p, [item.id]: !p[item.id] }))}
-                          className="flex items-center gap-1 text-xs text-slate-400 hover:text-white w-full"
-                        >
+                        <button onClick={() => setExpanded(p => ({ ...p, [item.id]: !p[item.id] }))}
+                          className="flex items-center gap-1 text-xs text-slate-400 hover:text-white w-full">
                           <Clock className="w-3 h-3" /> {itemLogs.length} تغيير مسجّل
                           {isOpen ? <ChevronUp className="w-3 h-3 mr-auto" /> : <ChevronDown className="w-3 h-3 mr-auto" />}
                         </button>
@@ -396,7 +493,6 @@ export default function OilChanges() {
       {/* ══ TAB: سجل التغييرات ══ */}
       {activeTab === 'history' && (
         <div className="space-y-4">
-          {/* بطاقات ملخص */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {Object.entries(logsByItem)
               .filter(([itemId]) => {
@@ -411,33 +507,29 @@ export default function OilChanges() {
                 const status  = calculateOilStatus(item.lastOilChangeReading, item.oilChangeInterval, item.currentReading)
                 return (
                   <div key={itemId} className="card text-center space-y-1">
-                    <div className="text-lg">{item._type === 'vehicle' ? '🚗' : '⚙️'}</div>
+                    <div className="text-lg">{item._type==='vehicle'?'🚗':'⚙️'}</div>
                     <div className="text-sm font-bold text-white truncate">{item.name}</div>
                     <div className="text-xs text-slate-500">{item.code || item.plateNumber}</div>
                     <div className="text-2xl font-black text-amber-400">{logs.length}</div>
                     <div className="text-xs text-slate-500">تغيير مسجّل</div>
                     <div className={`text-xs font-semibold ${
-                      status.status === 'overdue' ? 'text-red-400' :
-                      status.status === 'warning' ? 'text-amber-400' :
-                      status.status === 'ok'      ? 'text-emerald-400' : 'text-slate-500'
+                      status.status==='overdue' ? 'text-red-400' :
+                      status.status==='warning' ? 'text-amber-400' :
+                      status.status==='ok'      ? 'text-emerald-400' : 'text-slate-500'
                     }`}>
-                      {status.status === 'overdue' ? '⛔ متجاوز' :
-                       status.status === 'warning' ? '⚠️ قريب'   :
-                       status.status === 'ok'      ? '✅ جيد'    : '— غير محدد'}
+                      {status.status==='overdue'?'⛔ متجاوز':status.status==='warning'?'⚠️ قريب':status.status==='ok'?'✅ جيد':'— غير محدد'}
                     </div>
-                    {lastLog && <div className="text-xs text-slate-500">آخر تغيير: {lastLog.date || '—'}</div>}
+                    {lastLog && <div className="text-xs text-slate-500">آخر تغيير: {lastLog.date||'—'}</div>}
                   </div>
                 )
               })}
           </div>
-
-          {/* تايم لاين */}
           <div>
             <h2 className="text-sm font-semibold text-slate-400 mb-3 flex items-center gap-2">
               <Clock className="w-4 h-4" /> جميع التغييرات — من الأحدث للأقدم
             </h2>
             {oilLogs.length === 0 ? (
-              <EmptyState icon={Droplets} title="لا يوجد سجل تغييرات" message="سجلات تغيير الزيت ستظهر هنا" />
+              <EmptyState icon={Droplets} title="لا يوجد سجل" message="سجلات تغيير الزيت ستظهر هنا" />
             ) : (
               <div className="relative">
                 <div className="absolute right-4 top-0 bottom-0 w-0.5 bg-slate-700" />
@@ -451,10 +543,9 @@ export default function OilChanges() {
                     })
                     .map(log => {
                       const item   = itemMap[log.equipmentId]
-                      const unit   = item?.meterType === 'hours' ? 'ساعة' : 'كم'
+                      const unit   = item?.meterType==='hours' ? 'ساعة' : 'كم'
                       const nextAt = item?.oilChangeInterval
-                        ? (Number(log.reading) + Number(item.oilChangeInterval)).toLocaleString() + ' ' + unit
-                        : '—'
+                        ? (Number(log.reading)+Number(item.oilChangeInterval)).toLocaleString()+' '+unit : '—'
                       return (
                         <div key={log.id} className="relative">
                           <div className="absolute -right-[2.15rem] top-3 w-3 h-3 rounded-full bg-amber-500 border-2 border-slate-900" />
@@ -467,13 +558,13 @@ export default function OilChanges() {
                                 <div>
                                   <div className="text-sm font-bold text-white">
                                     {item?.name || log.equipmentId}
-                                    <span className="mr-2 text-xs">{item?._type === 'vehicle' ? '🚗' : '⚙️'}</span>
+                                    <span className="mr-2 text-xs">{item?._type==='vehicle'?'🚗':'⚙️'}</span>
                                   </div>
-                                  <div className="text-xs text-slate-500">{item?.code || item?.plateNumber || ''}</div>
+                                  <div className="text-xs text-slate-500">{item?.code||item?.plateNumber||''}</div>
                                 </div>
                               </div>
                               <div className="flex items-center gap-1 text-xs text-slate-400 bg-slate-900 px-2 py-1 rounded-lg">
-                                <CalendarDays className="w-3 h-3" /> {log.date || '—'}
+                                <CalendarDays className="w-3 h-3" /> {log.date||'—'}
                               </div>
                             </div>
                             <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
