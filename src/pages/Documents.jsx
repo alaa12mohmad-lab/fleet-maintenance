@@ -16,30 +16,30 @@ const EMPLOYEE_DOC_TYPES  = ['إقامة', 'تأمين طبي', 'رخصة قيا
 const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
 
-async function uploadToCloudinary(file) {
-  const formData = new FormData()
-  formData.append('file', file)
-  formData.append('upload_preset', UPLOAD_PRESET)
-  formData.append('folder', 'fleet_documents')
-  const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
-    { method: 'POST', body: formData }
-  )
-  if (!res.ok) throw new Error('فشل رفع الملف')
-  const data = await res.json()
-  return { fileUrl: data.secure_url, fileName: file.name, fileType: file.type }
+const SUPABASE_URL    = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON   = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+async function uploadToSupabase(file) {
+  const { createClient } = await import('@supabase/supabase-js')
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON)
+  const fileName = `${Date.now()}_${file.name.replace(/\s/g, '_').replace(/[^\w._-]/g, '').toLowerCase()}`
+  const { error } = await supabase.storage
+    .from('fleet-documents')
+    .upload(fileName, file, { contentType: file.type, upsert: false })
+  if (error) throw new Error('فشل رفع الملف: ' + error.message)
+  const { data: urlData } = supabase.storage.from('fleet-documents').getPublicUrl(fileName)
+  return { fileUrl: urlData.publicUrl, fileName: file.name, fileType: file.type }
 }
 
-// فتح PDF عبر Google Docs Viewer
+// للتوافق مع الملفات القديمة على Cloudinary
+async function uploadToCloudinary(file) {
+  return uploadToSupabase(file)
+}
+
+// فتح الملفات مباشرة — Supabase و Cloudinary كلاهما يدعم الفتح المباشر
 function getViewUrl(url, fileName) {
   if (!url) return url
-  // Supabase URLs تفتح مباشرة
-  if (url.includes('supabase.co')) return url
-  // Cloudinary PDFs عبر Google Docs Viewer
-  const isPDF = fileName?.toLowerCase().endsWith('.pdf')
-  if (isPDF) {
-    return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`
-  }
+  // كل الملفات تفتح مباشرة (Supabase + Cloudinary)
   return url
 }
 
