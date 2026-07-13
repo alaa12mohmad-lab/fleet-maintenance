@@ -36,10 +36,14 @@ async function uploadToCloudinary(file) {
   return uploadToSupabase(file)
 }
 
-// فتح الملفات مباشرة — Supabase و Cloudinary كلاهما يدعم الفتح المباشر
+// فتح الملفات مباشرة
 function getViewUrl(url, fileName) {
   if (!url) return url
-  // كل الملفات تفتح مباشرة (Supabase + Cloudinary)
+  // Cloudinary PDF: حول image/upload → raw/upload عشان يفتح صح
+  const isPDF = fileName?.toLowerCase().endsWith('.pdf') || url.toLowerCase().endsWith('.pdf')
+  if (url.includes('cloudinary.com') && isPDF) {
+    return url.replace('/image/upload/', '/raw/upload/')
+  }
   return url
 }
 
