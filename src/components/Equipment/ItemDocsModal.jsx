@@ -14,9 +14,10 @@ function getStatusInfo(doc) {
 
 function getViewUrl(url, fileName) {
   if (!url) return null
-  if (url.includes('supabase.co')) return url
-  const isPDF = fileName?.toLowerCase().endsWith('.pdf')
-  if (isPDF) return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`
+  const isPDF = fileName?.toLowerCase().endsWith('.pdf') || url.toLowerCase().endsWith('.pdf')
+  if (url.includes('cloudinary.com') && isPDF) {
+    return url.replace('/image/upload/', '/raw/upload/')
+  }
   return url
 }
 
