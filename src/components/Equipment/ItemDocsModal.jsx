@@ -1,186 +1,179 @@
-// src/components/Equipment/ItemDocsModal.jsx
+// src/components/Equipment/ItemMaintenanceModal.jsx
 import { Modal } from '../Common'
-import { FileText, Download, ExternalLink, AlertTriangle, CheckCircle2, Clock } from 'lucide-react'
-import { calculateDocumentStatus } from '../../utils/calculations'
+import { Wrench, CalendarDays, ExternalLink, Download, FileText, Gauge } from 'lucide-react'
 
-function getStatusInfo(doc) {
-  const s = calculateDocumentStatus(doc.expiryDate)
-  if (s.status === 'expired')  return { label: 'منتهي', color: 'text-red-400',    icon: '⛔' }
-  if (s.status === 'critical') return { label: `${s.daysLeft} يوم`, color: 'text-red-400',    icon: '⚠️' }
-  if (s.status === 'warning')  return { label: `${s.daysLeft} يوم`, color: 'text-amber-400',  icon: '⚠️' }
-  if (s.status === 'ok')       return { label: `${s.daysLeft} يوم`, color: 'text-emerald-400', icon: '✅' }
-  return { label: 'غير محدد', color: 'text-slate-400', icon: '—' }
+function getFileIcon(fileName) {
+  if (!fileName) return '📎'
+  if (fileName?.toLowerCase().endsWith('.pdf')) return '📄'
+  if (/\.(jpg|jpeg|png|webp|gif)$/i.test(fileName)) return '🖼️'
+  return '📎'
 }
 
-function getViewUrl(url, fileName) {
-  if (!url) return null
-  const isPDF = fileName?.toLowerCase().endsWith('.pdf') || url.toLowerCase().endsWith('.pdf')
-  if (url.includes('cloudinary.com') && isPDF) {
-    return url.replace('/image/upload/', '/raw/upload/')
-  }
-  return url
-}
+function exportMaintenancePDF(item, logs) {
+  const now = new Date().toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' })
+  const totalCost = logs.reduce((sum, l) => sum + (Number(l.cost) || 0), 0)
 
-export default function ItemDocsModal({ isOpen, onClose, item, docs = [] }) {
-  if (!item) return null
+  const rows = logs.map(log => {
+    const attachments = log.attachments?.length ? log.attachments : []
+    const links = attachments.map(f =>
+      `<a href="${f.fileUrl}" target="_blank" style="color:#3b82f6;font-size:11px;display:block">${getFileIcon(f.fileName)} ${f.fileName || 'ملف'}</a>`
+    ).join('')
+    return `
+      <tr>
+        <td>${log.date || '—'}</td>
+        <td><span style="background:#1e3a5f;color:#60a5fa;padding:2px 8px;border-radius:4px;font-size:11px">${log.maintenanceType}</span></td>
+        <td>${log.meterReading ? Number(log.meterReading).toLocaleString('ar-SA') : '—'}</td>
+        <td style="color:#34d399;font-weight:600">${log.cost > 0 ? Number(log.cost).toLocaleString('ar-SA') + ' ر.س' : '—'}</td>
+        <td>${log.workshop || '—'}</td>
+        <td style="font-size:11px;color:#94a3b8">${log.description || '—'}</td>
+        <td>${links || '—'}</td>
+      </tr>`
+  }).join('')
 
-  const activeDocs   = docs.filter(d => calculateDocumentStatus(d.expiryDate).status !== 'expired')
-  const expiredDocs  = docs.filter(d => calculateDocumentStatus(d.expiryDate).status === 'expired')
-
-  // تحميل مستند واحد
-  const downloadDoc = (doc) => {
-    const allFiles = doc.attachments?.length ? doc.attachments : doc.fileUrl ? [{ fileUrl: doc.fileUrl, fileName: doc.fileName }] : []
-    allFiles.forEach(f => {
-      if (!f.fileUrl) return
-      const a = document.createElement('a')
-      a.href = f.fileUrl
-      a.download = f.fileName || doc.name
-      a.target = '_blank'
-      a.rel = 'noopener noreferrer'
-      a.click()
-    })
-  }
-
-  // طباعة / PDF كل المستندات
-  const printAllDocs = () => {
-    const now = new Date().toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' })
-    const rows = docs.map(doc => {
-      const s = getStatusInfo(doc)
-      const allFiles = doc.attachments?.length ? doc.attachments : doc.fileUrl ? [{ fileUrl: doc.fileUrl, fileName: doc.fileName }] : []
-      const links = allFiles.map(f =>
-        f.fileUrl ? `<a href="${f.fileUrl}" target="_blank" style="color:#3b82f6;font-size:11px">${f.fileName || 'فتح'}</a>` : ''
-      ).join('<br/>')
-      return `
-        <tr>
-          <td>${doc.name}</td>
-          <td>${doc.docType || '—'}</td>
-          <td>${doc.issueDate || '—'}</td>
-          <td>${doc.expiryDate || '—'}</td>
-          <td style="font-weight:600" class="${s.color}">${s.icon} ${s.label}</td>
-          <td>${links || '—'}</td>
-          <td>${doc.notes || '—'}</td>
-        </tr>`
-    }).join('')
-
-    const html = `
+  const html = `
 <!DOCTYPE html><html dir="rtl" lang="ar">
-<head><meta charset="UTF-8"/><title>مستندات ${item.name}</title>
+<head><meta charset="UTF-8"/><title>سجل صيانة ${item.name}</title>
 <style>
-  body { font-family: 'Segoe UI', Arial, sans-serif; direction: rtl; color: #1e293b; font-size: 12px; }
-  .header { background: linear-gradient(135deg,#0f172a,#1e293b); color: #fff; padding: 24px 32px; margin-bottom: 24px; }
-  .title { font-size: 22px; font-weight: 800; color: #fbbf24; }
-  .sub { color: #94a3b8; margin-top: 4px; }
-  table { width: 100%; border-collapse: collapse; }
-  th { background: #1e293b; color: #fff; padding: 10px; text-align: right; font-size: 11px; }
-  td { padding: 9px 10px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
-  tr:nth-child(even) { background: #f8fafc; }
-  .footer { text-align: center; color: #94a3b8; font-size: 10px; margin-top: 20px; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',Tahoma,Arial,sans-serif; direction:rtl; color:#1e293b; font-size:12px; }
+  .cover { background:linear-gradient(135deg,#0f172a,#1e293b,#14532d); color:#fff; padding:32px 40px 24px; margin-bottom:24px; }
+  .cover-title { font-size:24px; font-weight:800; color:#34d399; margin-bottom:4px; }
+  .cover-sub { color:#94a3b8; margin-bottom:20px; }
+  .stats { display:flex; gap:16px; flex-wrap:wrap; }
+  .stat { background:rgba(255,255,255,0.08); border-radius:10px; padding:12px 18px; text-align:center; border:1px solid rgba(255,255,255,0.1); }
+  .stat-num { font-size:24px; font-weight:800; color:#34d399; }
+  .stat-label { font-size:10px; color:#94a3b8; margin-top:2px; }
+  .section { padding:0 40px 24px; }
+  .section-title { font-size:15px; font-weight:700; color:#0f172a; margin-bottom:12px; padding-bottom:6px; border-bottom:3px solid #22c55e; }
+  table { width:100%; border-collapse:collapse; font-size:11px; }
+  thead tr { background:#1e293b; color:#fff; }
+  thead th { padding:9px 10px; text-align:right; font-weight:600; }
+  tbody tr { border-bottom:1px solid #e2e8f0; }
+  tbody tr:nth-child(even) { background:#f8fafc; }
+  td { padding:8px 10px; vertical-align:middle; }
+  .footer { text-align:center; font-size:10px; color:#94a3b8; padding:16px 40px; border-top:1px solid #e2e8f0; margin-top:16px; }
+  @media print { body { font-size:10px; } .cover { margin-bottom:16px; } }
 </style></head>
 <body>
-<div class="header">
-  <div class="title">📄 مستندات ${item.name}</div>
-  <div class="sub">${item.code || item.plateNumber || ''} &nbsp;·&nbsp; ${now} &nbsp;·&nbsp; ${docs.length} مستند</div>
-</div>
-<table>
-  <thead><tr><th>اسم المستند</th><th>النوع</th><th>تاريخ الإصدار</th><th>تاريخ الانتهاء</th><th>الحالة</th><th>الملفات</th><th>ملاحظات</th></tr></thead>
-  <tbody>${rows}</tbody>
-</table>
-<div class="footer">نظام إدارة الأسطول والمعدات · ${now}</div>
-<script>window.onload=()=>window.print()</script>
+  <div class="cover">
+    <div class="cover-title">🔧 سجل صيانة ${item.name}</div>
+    <div class="cover-sub">${item.code || item.plateNumber || ''} &nbsp;·&nbsp; ${now}</div>
+    <div class="stats">
+      <div class="stat"><div class="stat-num">${logs.length}</div><div class="stat-label">إجمالي السجلات</div></div>
+      <div class="stat"><div class="stat-num" style="color:#fbbf24">${totalCost.toLocaleString('ar-SA')}</div><div class="stat-label">إجمالي التكاليف (ر.س)</div></div>
+      <div class="stat"><div class="stat-num" style="color:#60a5fa">${logs.filter(l=>l.attachments?.length>0).length}</div><div class="stat-label">سجلات بمرفقات</div></div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-title">📋 تفاصيل سجلات الصيانة</div>
+    <table>
+      <thead><tr><th>التاريخ</th><th>نوع الصيانة</th><th>قراءة العداد</th><th>التكلفة</th><th>الورشة</th><th>الوصف</th><th>المرفقات</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px">لا توجد سجلات</td></tr>'}</tbody>
+    </table>
+  </div>
+  <div class="footer">نظام إدارة الأسطول والمعدات &nbsp;·&nbsp; ${now}</div>
+  <script>window.onload=()=>window.print()</script>
 </body></html>`
 
-    const win = window.open('', '_blank')
-    win.document.write(html)
-    win.document.close()
-  }
+  const win = window.open('', '_blank')
+  win.document.write(html)
+  win.document.close()
+}
 
-  const DocRow = ({ doc }) => {
-    const s = getStatusInfo(doc)
-    const allFiles = doc.attachments?.length ? doc.attachments : doc.fileUrl ? [{ fileUrl: doc.fileUrl, fileName: doc.fileName }] : []
-    return (
-      <div className="card space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <div className="font-semibold text-white text-sm">{doc.name}</div>
-            <div className="text-xs text-slate-500 mt-0.5">{doc.docType || '—'}</div>
-          </div>
-          <span className={`text-xs font-bold shrink-0 ${s.color}`}>{s.icon} {s.label}</span>
-        </div>
+export default function ItemMaintenanceModal({ isOpen, onClose, item, logs = [], onEdit }) {
+  if (!item) return null
 
-        <div className="grid grid-cols-2 gap-2 text-xs text-slate-400">
-          {doc.issueDate  && <span>📅 إصدار: {doc.issueDate}</span>}
-          {doc.expiryDate && <span>⏳ انتهاء: {doc.expiryDate}</span>}
-        </div>
-
-        {doc.notes && <div className="text-xs text-slate-500 bg-slate-900/50 rounded px-2 py-1">📝 {doc.notes}</div>}
-
-        {/* أزرار الملفات */}
-        {allFiles.length > 0 && (
-          <div className="flex flex-wrap gap-2 pt-1">
-            {allFiles.map((f, i) => (
-              <a key={i} href={getViewUrl(f.fileUrl, f.fileName)} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white px-2 py-1 rounded-lg transition-colors">
-                <ExternalLink className="w-3 h-3" /> {f.fileName || 'فتح'}
-              </a>
-            ))}
-            <button onClick={() => downloadDoc(doc)}
-              className="flex items-center gap-1 text-xs bg-blue-700/40 hover:bg-blue-600/60 text-blue-300 px-2 py-1 rounded-lg transition-colors">
-              <Download className="w-3 h-3" /> تحميل
-            </button>
-          </div>
-        )}
-      </div>
-    )
-  }
+  const totalCost = logs.reduce((sum, l) => sum + (Number(l.cost) || 0), 0)
+  const unit = item.meterType === 'hours' ? 'ساعة' : 'كم'
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`مستندات — ${item.name}`} size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title={`سجل صيانة — ${item.name}`} size="lg">
       <div className="space-y-4">
+
         {/* رأس */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="text-sm text-slate-400">
-            {docs.length} مستند &nbsp;·&nbsp;
-            <span className="text-emerald-400">{activeDocs.length} ساري</span>
-            {expiredDocs.length > 0 && <span className="text-red-400"> &nbsp;·&nbsp; {expiredDocs.length} منتهي</span>}
+            {logs.length} سجل &nbsp;·&nbsp;
+            <span className="text-emerald-400 font-semibold">إجمالي: {totalCost.toLocaleString()} ر.س</span>
           </div>
-          {docs.length > 0 && (
-            <button onClick={printAllDocs}
-              className="flex items-center gap-1 text-xs bg-amber-700/30 hover:bg-amber-600/40 text-amber-300 px-3 py-1.5 rounded-lg transition-colors">
-              <FileText className="w-3.5 h-3.5" /> طباعة الكل PDF
+          {logs.length > 0 && (
+            <button onClick={() => exportMaintenancePDF(item, logs)}
+              className="flex items-center gap-1 text-xs bg-emerald-700/30 hover:bg-emerald-600/40 text-emerald-300 px-3 py-1.5 rounded-lg transition-colors">
+              <FileText className="w-3.5 h-3.5" /> طباعة / PDF
             </button>
           )}
         </div>
 
-        {docs.length === 0 ? (
+        {logs.length === 0 ? (
           <div className="text-center py-10 text-slate-500">
-            <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p>لا توجد مستندات مرتبطة بهذه المعدة</p>
-            <p className="text-xs mt-1">أضف مستنداً من صفحة المستندات واربطه بهذه المعدة</p>
+            <Wrench className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p>لا توجد سجلات صيانة لهذه المعدة</p>
+            <p className="text-xs mt-1">أضف سجلاً من صفحة سجل الصيانة</p>
           </div>
         ) : (
           <div className="space-y-3 max-h-[60vh] overflow-y-auto pl-1">
-            {/* السارية */}
-            {activeDocs.length > 0 && (
-              <div>
-                <div className="text-xs text-emerald-400 font-semibold mb-2 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> المستندات السارية ({activeDocs.length})
+            {logs.map(log => {
+              const attachments = log.attachments?.length ? log.attachments : []
+              return (
+                <div key={log.id} className="card space-y-2">
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <div>
+                      <span className="bg-primary-900/40 text-primary-400 px-2 py-0.5 rounded text-xs font-semibold">
+                        {log.maintenanceType}
+                      </span>
+                      {log.workshop && <span className="text-xs text-slate-500 mr-2">— {log.workshop}</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1 text-xs text-slate-400">
+                        <CalendarDays className="w-3 h-3" /> {log.date || '—'}
+                      </span>
+                      {onEdit && (
+                        <button onClick={() => onEdit(log)}
+                          className="text-xs text-blue-400 hover:text-blue-300 px-2 py-0.5 bg-blue-900/30 rounded transition-colors">
+                          تعديل
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {log.meterReading > 0 && (
+                      <div className="flex items-center gap-1 text-slate-400">
+                        <Gauge className="w-3 h-3" />
+                        {Number(log.meterReading).toLocaleString()} {unit}
+                      </div>
+                    )}
+                    {log.cost > 0 && (
+                      <div className="text-emerald-400 font-semibold">
+                        {Number(log.cost).toLocaleString()} ر.س
+                      </div>
+                    )}
+                  </div>
+
+                  {log.description && (
+                    <div className="text-xs text-slate-400 bg-slate-900/50 rounded px-2 py-1">
+                      {log.description}
+                    </div>
+                  )}
+
+                  {log.notes && (
+                    <div className="text-xs text-slate-500">📝 {log.notes}</div>
+                  )}
+
+                  {attachments.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-1 border-t border-slate-700">
+                      {attachments.map((f, i) => (
+                        <a key={i} href={f.fileUrl} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white px-2 py-1 rounded-lg transition-colors">
+                          <ExternalLink className="w-3 h-3" />
+                          {getFileIcon(f.fileName)} {f.fileName || `ملف ${i+1}`}
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  {activeDocs.map(doc => <DocRow key={doc.id} doc={doc} />)}
-                </div>
-              </div>
-            )}
-            {/* المنتهية */}
-            {expiredDocs.length > 0 && (
-              <div>
-                <div className="text-xs text-red-400 font-semibold mb-2 flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" /> المستندات المنتهية ({expiredDocs.length})
-                </div>
-                <div className="space-y-2 opacity-70">
-                  {expiredDocs.map(doc => <DocRow key={doc.id} doc={doc} />)}
-                </div>
-              </div>
-            )}
+              )
+            })}
           </div>
         )}
       </div>
