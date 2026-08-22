@@ -1,11 +1,17 @@
 // src/components/Equipment/EquipmentCard.jsx
 import { calculateOilStatus } from '../../utils/calculations'
 import { OilStatusBadge, ProgressBar } from '../Common'
-import { Gauge, Droplets, Wrench, Edit2, Trash2, MoreVertical, MapPin } from 'lucide-react'
+import { Gauge, Droplets, Wrench, Edit2, Trash2, MoreVertical, MapPin, FileText, ClipboardList } from 'lucide-react'
 import { useState } from 'react'
 import { formatDate } from '../../utils/calculations'
 
-export default function EquipmentCard({ item, itemType, onEdit, onDelete, onMeterReading, onOilChange, onMaintenance, canEdit, canDelete }) {
+export default function EquipmentCard({
+  item, itemType, onEdit, onDelete,
+  onMeterReading, onOilChange, onMaintenance,
+  onViewDocs, onViewMaintenance,
+  canEdit, canDelete,
+  docsCount = 0, maintenanceCount = 0,
+}) {
   const [menuOpen, setMenuOpen] = useState(false)
   const unit = item.meterType === 'hours' ? 'ساعة' : 'كم'
   const oilStatus = calculateOilStatus(item.lastOilChangeReading, item.oilChangeInterval, item.currentReading)
@@ -45,7 +51,7 @@ export default function EquipmentCard({ item, itemType, onEdit, onDelete, onMete
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              <div className="absolute left-0 top-full mt-1 w-44 bg-slate-800 border border-slate-700 rounded-xl shadow-xl z-20 overflow-hidden">
+              <div className="absolute left-0 top-full mt-1 w-48 bg-slate-800 border border-slate-700 rounded-xl shadow-xl z-20 overflow-hidden">
                 <button onClick={() => { onMeterReading(item); setMenuOpen(false) }}
                   className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-slate-300 hover:bg-slate-700 transition-colors">
                   <Gauge className="w-4 h-4" /> إدخال قراءة عداد
@@ -57,6 +63,24 @@ export default function EquipmentCard({ item, itemType, onEdit, onDelete, onMete
                 <button onClick={() => { onMaintenance(item); setMenuOpen(false) }}
                   className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-slate-300 hover:bg-slate-700 transition-colors">
                   <Wrench className="w-4 h-4" /> إضافة صيانة
+                </button>
+                <button onClick={() => { onViewDocs && onViewDocs(item); setMenuOpen(false) }}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-blue-300 hover:bg-slate-700 transition-colors border-t border-slate-700">
+                  <FileText className="w-4 h-4" /> مستنداتها
+                  {docsCount > 0 && (
+                    <span className="mr-auto bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                      {docsCount}
+                    </span>
+                  )}
+                </button>
+                <button onClick={() => { onViewMaintenance && onViewMaintenance(item); setMenuOpen(false) }}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-emerald-300 hover:bg-slate-700 transition-colors">
+                  <ClipboardList className="w-4 h-4" /> سجل الصيانة
+                  {maintenanceCount > 0 && (
+                    <span className="mr-auto bg-emerald-700 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                      {maintenanceCount}
+                    </span>
+                  )}
                 </button>
                 {canEdit && (
                   <button onClick={() => { onEdit(item); setMenuOpen(false) }}
@@ -118,6 +142,26 @@ export default function EquipmentCard({ item, itemType, onEdit, onDelete, onMete
         <div className="mt-3 pt-3 border-t border-slate-700 flex items-center gap-1.5 text-xs text-slate-500">
           <Wrench className="w-3 h-3" />
           <span>آخر صيانة: {formatDate(item.lastMaintenanceDate)}</span>
+        </div>
+      )}
+
+      {/* Docs + Maintenance badges */}
+      {(docsCount > 0 || maintenanceCount > 0) && (
+        <div className="mt-2 pt-2 border-t border-slate-700 flex gap-3">
+          {docsCount > 0 && (
+            <button onClick={() => onViewDocs && onViewDocs(item)}
+              className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors">
+              <FileText className="w-3 h-3" />
+              <span>{docsCount} مستند</span>
+            </button>
+          )}
+          {maintenanceCount > 0 && (
+            <button onClick={() => onViewMaintenance && onViewMaintenance(item)}
+              className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors">
+              <ClipboardList className="w-3 h-3" />
+              <span>{maintenanceCount} صيانة</span>
+            </button>
+          )}
         </div>
       )}
     </div>
