@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext'
 import { subscribeToCollection, deleteItem } from '../firebase/firestore'
 import EquipmentCard from '../components/Equipment/EquipmentCard'
 import EquipmentForm from '../components/Equipment/EquipmentForm'
-import ItemDocsModal from '../components/Equipment/ItemDocsModal'
 import { MeterReadingModal, OilChangeModal } from '../components/Equipment/MeterReadingForm'
 import MaintenanceForm from '../components/Maintenance/MaintenanceForm'
 import { EmptyState, SearchInput, ConfirmDialog, LoadingSpinner, Pagination } from '../components/Common'
@@ -17,24 +16,22 @@ const ITEMS_PER_PAGE = 12
 
 export default function EquipmentPage({ itemType = 'equipment' }) {
   const { hasPermission } = useAuth()
-  const [items, setItems]         = useState([])
-  const [documents, setDocuments] = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [search, setSearch]       = useState('')
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
-  const [currentPage, setCurrentPage]   = useState(1)
+  const [currentPage, setCurrentPage] = useState(1)
 
-  const [showForm, setShowForm]           = useState(false)
-  const [editItem, setEditItem]           = useState(null)
-  const [deleteTarget, setDeleteTarget]   = useState(null)
-  const [meterTarget, setMeterTarget]     = useState(null)
-  const [oilTarget, setOilTarget]         = useState(null)
+  const [showForm, setShowForm] = useState(false)
+  const [editItem, setEditItem] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [meterTarget, setMeterTarget] = useState(null)
+  const [oilTarget, setOilTarget] = useState(null)
   const [maintenanceTarget, setMaintenanceTarget] = useState(null)
-  const [docsTarget, setDocsTarget]       = useState(null) // المعدة المختارة لعرض مستنداتها
 
-  const coll  = itemType === 'vehicle' ? 'vehicles' : 'equipments'
+  const coll = itemType === 'vehicle' ? 'vehicles' : 'equipments'
   const label = itemType === 'vehicle' ? 'سيارة' : 'معدة'
-  const icon  = itemType === 'vehicle' ? '🚗' : '⚙️'
+  const icon = itemType === 'vehicle' ? '🚗' : '⚙️'
 
   useEffect(() => {
     const unsub = subscribeToCollection(coll, (data) => {
@@ -43,24 +40,6 @@ export default function EquipmentPage({ itemType = 'equipment' }) {
     })
     return unsub
   }, [coll])
-
-  // جلب كل المستندات لحساب عدد مستندات كل معدة
-  useEffect(() => {
-    const unsub = subscribeToCollection('documents', setDocuments)
-    return unsub
-  }, [])
-
-  // map: itemId → مستنداتها
-  const docsByItem = useMemo(() => {
-    const map = {}
-    documents.forEach(doc => {
-      if (doc.linkedId) {
-        if (!map[doc.linkedId]) map[doc.linkedId] = []
-        map[doc.linkedId].push(doc)
-      }
-    })
-    return map
-  }, [documents])
 
   const filtered = useMemo(() => {
     let result = items
@@ -83,7 +62,7 @@ export default function EquipmentPage({ itemType = 'equipment' }) {
   }, [items, search, filterStatus])
 
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
-  const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
+  const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
 
   const handleDelete = async () => {
     if (!deleteTarget) return
@@ -96,8 +75,8 @@ export default function EquipmentPage({ itemType = 'equipment' }) {
     }
   }
 
-  const handleEdit  = (item) => { setEditItem(item); setShowForm(true) }
-  const closeForm   = () => { setShowForm(false); setEditItem(null) }
+  const handleEdit = (item) => { setEditItem(item); setShowForm(true) }
+  const closeForm = () => { setShowForm(false); setEditItem(null) }
 
   if (loading) return <LoadingSpinner />
 
@@ -177,8 +156,6 @@ export default function EquipmentPage({ itemType = 'equipment' }) {
                 onMeterReading={setMeterTarget}
                 onOilChange={setOilTarget}
                 onMaintenance={setMaintenanceTarget}
-                onViewDocs={setDocsTarget}
-                docsCount={docsByItem[item.id]?.length || 0}
                 canEdit={hasPermission('editEquipment')}
                 canDelete={hasPermission('deleteEquipment')}
               />
@@ -191,15 +168,8 @@ export default function EquipmentPage({ itemType = 'equipment' }) {
       {/* Modals */}
       <EquipmentForm isOpen={showForm} onClose={closeForm} item={editItem} itemType={itemType} />
       <MeterReadingModal isOpen={!!meterTarget} onClose={() => setMeterTarget(null)} item={meterTarget} itemType={itemType} />
-      <OilChangeModal    isOpen={!!oilTarget}   onClose={() => setOilTarget(null)}   item={oilTarget}   itemType={itemType} />
-      <MaintenanceForm   isOpen={!!maintenanceTarget} onClose={() => setMaintenanceTarget(null)} item={maintenanceTarget}
-        allEquipment={itemType === 'equipment' ? items : []} allVehicles={itemType === 'vehicle' ? items : []} />
-      <ItemDocsModal
-        isOpen={!!docsTarget}
-        onClose={() => setDocsTarget(null)}
-        item={docsTarget}
-        docs={docsTarget ? (docsByItem[docsTarget.id] || []) : []}
-      />
+      <OilChangeModal isOpen={!!oilTarget} onClose={() => setOilTarget(null)} item={oilTarget} itemType={itemType} />
+      <MaintenanceForm isOpen={!!maintenanceTarget} onClose={() => setMaintenanceTarget(null)} item={maintenanceTarget} allEquipment={itemType === 'equipment' ? items : []} allVehicles={itemType === 'vehicle' ? items : []} />
       <ConfirmDialog
         isOpen={!!deleteTarget}
         onConfirm={handleDelete}
