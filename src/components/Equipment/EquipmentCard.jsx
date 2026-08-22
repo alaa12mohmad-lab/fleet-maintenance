@@ -1,17 +1,11 @@
 // src/components/Equipment/EquipmentCard.jsx
 import { calculateOilStatus } from '../../utils/calculations'
 import { OilStatusBadge, ProgressBar } from '../Common'
-import { Gauge, Droplets, Wrench, Edit2, Trash2, MoreVertical, MapPin, FileText } from 'lucide-react'
+import { Gauge, Droplets, Wrench, Edit2, Trash2, MoreVertical, MapPin } from 'lucide-react'
 import { useState } from 'react'
 import { formatDate } from '../../utils/calculations'
 
-export default function EquipmentCard({
-  item, itemType, onEdit, onDelete,
-  onMeterReading, onOilChange, onMaintenance,
-  onViewDocs,
-  canEdit, canDelete,
-  docsCount = 0,
-}) {
+export default function EquipmentCard({ item, itemType, onEdit, onDelete, onMeterReading, onOilChange, onMaintenance, canEdit, canDelete }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const unit = item.meterType === 'hours' ? 'ساعة' : 'كم'
   const oilStatus = calculateOilStatus(item.lastOilChangeReading, item.oilChangeInterval, item.currentReading)
@@ -63,15 +57,6 @@ export default function EquipmentCard({
                 <button onClick={() => { onMaintenance(item); setMenuOpen(false) }}
                   className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-slate-300 hover:bg-slate-700 transition-colors">
                   <Wrench className="w-4 h-4" /> إضافة صيانة
-                </button>
-                <button onClick={() => { onViewDocs(item); setMenuOpen(false) }}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-blue-300 hover:bg-slate-700 transition-colors border-t border-slate-700">
-                  <FileText className="w-4 h-4" /> مستنداتها
-                  {docsCount > 0 && (
-                    <span className="mr-auto bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                      {docsCount}
-                    </span>
-                  )}
                 </button>
                 {canEdit && (
                   <button onClick={() => { onEdit(item); setMenuOpen(false) }}
@@ -134,17 +119,6 @@ export default function EquipmentCard({
           <Wrench className="w-3 h-3" />
           <span>آخر صيانة: {formatDate(item.lastMaintenanceDate)}</span>
         </div>
-      )}
-
-      {/* Docs badge */}
-      {docsCount > 0 && (
-        <button
-          onClick={() => onViewDocs(item)}
-          className="mt-3 pt-3 border-t border-slate-700 flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 w-full transition-colors"
-        >
-          <FileText className="w-3 h-3" />
-          <span>{docsCount} مستند مرتبط</span>
-        </button>
       )}
     </div>
   )
